@@ -20,3 +20,5 @@ docs/checklist.md
 .claude/
 data-gym-cache/
 data/codex_work/
+.venv-old/
+data/gate/

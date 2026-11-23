@@ -57,7 +57,7 @@ class Models(Protocol):
 
 
 class QdrantSearch:
-    def __init__(self, client: QdrantClient, models_: Models, hnsw_ef: int = 256, oversampling: float = 4.0):
+    def __init__(self, client: QdrantClient, models_: Models, hnsw_ef: int = 1024, oversampling: float = 16.0):
         self.client, self.models = client, models_
         self.params = models.SearchParams(
             hnsw_ef=hnsw_ef, quantization=models.QuantizationSearchParams(rescore=True, oversampling=oversampling))

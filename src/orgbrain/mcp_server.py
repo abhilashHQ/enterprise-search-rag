@@ -103,7 +103,7 @@ def start_loading(backend: str, data_dir: Path, dense: str, device: str) -> "Fut
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="orgbrain-search", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--backend", choices=["local", "qdrant"], default="local")
+    p.add_argument("--backend", choices=["local", "qdrant"], default="qdrant")
     p.add_argument("--data-dir", type=Path, default=ROOT / "data")
     p.add_argument("--dense", choices=["fp16", "binary"], default="fp16")
     p.add_argument("--device", default="cuda")
