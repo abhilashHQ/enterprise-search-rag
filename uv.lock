@@ -414,6 +414,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+app = [
+    { name = "fastapi" },
+    { name = "mcp" },
+    { name = "sse-starlette" },
+    { name = "uvicorn" },
+]
 demo = [
     { name = "sse-starlette" },
     { name = "starlette" },
@@ -436,6 +442,8 @@ requires-dist = [
     { name = "anthropic" },
     { name = "aws-bedrock-token-generator" },
     { name = "datasketch", specifier = ">=2.0.0" },
+    { name = "fastapi", marker = "extra == 'app'", specifier = ">=0.115" },
+    { name = "mcp", marker = "extra == 'app'", specifier = ">=2.3,<3" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.3,<3" },
     { name = "numpy" },
     { name = "openai" },
@@ -451,14 +459,16 @@ requires-dist = [
     { name = "regex" },
     { name = "scipy" },
     { name = "sentence-transformers", specifier = ">=6.1.0" },
+    { name = "sse-starlette", marker = "extra == 'app'", specifier = ">=3.5" },
     { name = "sse-starlette", marker = "extra == 'demo'", specifier = ">=3.5" },
     { name = "starlette", marker = "extra == 'demo'", specifier = ">=1.7" },
     { name = "tiktoken" },
     { name = "torch", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/cu128" },
     { name = "tqdm" },
+    { name = "uvicorn", marker = "extra == 'app'", specifier = ">=0.54" },
     { name = "uvicorn", marker = "extra == 'demo'", specifier = ">=0.54" },
 ]
-provides-extras = ["mcp", "demo"]
+provides-extras = ["mcp", "demo", "app"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -473,6 +483,24 @@ version = "0.5"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/ed/e47dec0626edd468c84c04d97769e7ab4ea6457b7f54dcb3f72b17fcd876/Events-0.5-py3-none-any.whl", hash = "sha256:a7286af378ba3e46640ac9825156c93bdba7502174dd696090fdfcd4d80a1abd", size = 6758, upload-time = "2023-07-31T08:23:13.645Z" },
+]
+
+[[package]]
+name = "fastapi"
+version = "0.165.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "anyio" },
+    { name = "opentelemetry-api" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/27/f9/e7820ef181026fea100bde02d811445bf8e883362d7092b6928767147056/fastapi-0.165.0.tar.gz", hash = "sha256:dd94d4128319c1e1d50535ab023ab698f850a4d2822f0e181747b46f4ff3c0ab", size = 557984, upload-time = "2026-11-18T19:15:37.076Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/c1/3b74c030262a1b38b1fee180f80b4007bbc11c9ac12028cb18c7bcecaec9/fastapi-0.165.0-py3-none-any.whl", hash = "sha256:896f48462042bb4f162147eb8fac7e858753dc1f486765709baf105d70e4fc5b", size = 159475, upload-time = "2026-11-18T19:15:35.345Z" },
 ]
 
 [[package]]
