@@ -1,5 +1,33 @@
+name: orgbrain
+
 services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    ports: ["127.0.0.1:6333:6333", "127.0.0.1:6334:6334"]
+    volumes: [qdrant:/qdrant/storage]
+    environment:
+      QDRANT__SERVICE__MAX_REQUEST_SIZE_MB: "64"
+
+  postgres:
+    image: postgres:17
+    ports: ["127.0.0.1:5432:5432"]
+    environment:
+      POSTGRES_USER: orgbrain
+      POSTGRES_PASSWORD: orgbrain
+      POSTGRES_DB: orgbrain
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orgbrain"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:8
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: [redis:/data]
+
   opensearch:
+    profiles: [research]
     image: opensearchproject/opensearch:2.19.1
     container_name: erb-opensearch
     environment:
@@ -8,8 +36,12 @@ services:
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - OPENSEARCH_JAVA_OPTS=-Xms3g -Xmx3g
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     volumes:
       - erb-opensearch-data:/usr/share/opensearch/data
+
 volumes:
+  qdrant:
+  postgres:
+  redis:
   erb-opensearch-data:
