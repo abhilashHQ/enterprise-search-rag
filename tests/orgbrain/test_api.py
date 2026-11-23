@@ -2,8 +2,11 @@ import json
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from orgbrain.api import create_app
+from orgbrain.db import Base, ConversationStore
 from orgbrain.runtime.events import Done, Message, ToolCall, ToolResult
 
 HIT = {"ref": "a1b2c3", "doc_id": "d1", "source": "confluence", "title": "Runbook", "snippet": "", "score": 1.0}
@@ -33,6 +36,14 @@ def parse_sse(text):
     return events
 
 
+async def app_for(runtime):
+    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    store = ConversationStore(engine)
+    return create_app(runtime, store), store
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
@@ -47,7 +58,7 @@ async def ask(app, body):
 @pytest.mark.anyio
 async def test_ask_streams_steps_and_a_cited_answer():
     rt = FakeRuntime()
-    status, events = await ask(create_app(rt), {"message": "rollback?"})
+    status, events = await ask((await app_for(rt))[0], {"message": "rollback?"})
     assert status == 200
     assert [n for n, _ in events] == ["step", "step", "message", "answer", "done"]
     assert events[1][1] == {"kind": "tool_result", "tool": "search", "count": 1, "error": None}
@@ -59,7 +70,7 @@ async def test_ask_streams_steps_and_a_cited_answer():
 @pytest.mark.anyio
 async def test_follow_up_resumes_the_runtime_session():
     rt = FakeRuntime()
-    app = create_app(rt)
+    app, _ = await app_for(rt)
     _, events = await ask(app, {"message": "one"})
     cid = events[3][1]["conversation_id"]
     await ask(app, {"message": "two", "conversation_id": cid})
@@ -73,11 +84,19 @@ async def test_runtime_failure_becomes_an_error_event():
             raise RuntimeError("codex exited")
             yield
 
-    _, events = await ask(create_app(Broken()), {"message": "q"})
+    _, events = await ask((await app_for(Broken()))[0], {"message": "q"})
     assert events == [("error", {"message": "codex exited"})]
 
 
 @pytest.mark.anyio
 async def test_health_reports_runtime():
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(FakeRuntime())), base_url="http://t") as c:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=(await app_for(FakeRuntime()))[0]), base_url="http://t") as c:
         assert (await c.get("/api/health")).json() == {"status": "ok", "runtime": "fake"}
+
+
+@pytest.mark.anyio
+async def test_turn_is_saved_with_citations():
+    app, store = await app_for(FakeRuntime())
+    _, events = await ask(app, {"message": "rollback?"})
+    msgs = await store.messages(events[3][1]["conversation_id"])
+    assert [m["role"] for m in msgs] == ["user", "assistant"] and msgs[1]["citations"][0]["ref"] == "a1b2c3"
