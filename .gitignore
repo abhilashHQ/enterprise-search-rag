@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 data/erb/
 data/index/
+data/bakeoff/
+data/hf_cache/
 third_party/
 runs/
 cache/
@@ -16,3 +18,5 @@ docs/spikes/
 docs/tutor/
 docs/checklist.md
 .claude/
+data-gym-cache/
+data/codex_work/
