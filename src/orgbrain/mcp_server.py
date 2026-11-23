@@ -2,6 +2,7 @@
 
   uv run --extra app orgbrain-search                       # http://127.0.0.1:8765/mcp
   uv run --extra app orgbrain-search --dense binary        # dense index in 197 MB of RAM
+  uv run --extra app orgbrain-search --backend qdrant   # Qdrant + orgbrain-models; needs both running
 
 Long-running on purpose: indexes load once (about a minute) in a background thread, and every agent turn (Codex, the
 API-key runtime, any MCP client) reuses them. Calls are serialized: the GPU models are not thread-safe.
@@ -19,6 +20,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from entsearch.data import ROOT
+from orgbrain.config import Settings
 from orgbrain.search import LocalSearch, SearchBackend
 from orgbrain.sources import Source
 from orgbrain.tools import read_doc_tool, search_tool
@@ -69,16 +71,30 @@ def build_server(load: "Future[SearchBackend]") -> MCPServer:
     return server
 
 
-def start_loading(data_dir: Path, dense: str, device: str) -> "Future[SearchBackend]":
+def make_backend(name: str, data_dir: Path, dense: str, device: str) -> SearchBackend:
+    if name == "local":
+        return LocalSearch.load(data_dir, dense=dense, device=device)
+    if name == "qdrant":
+        from orgbrain.qdrant_store import CHUNKS, DOCS, QdrantSearch
+
+        backend = QdrantSearch.connect(Settings.from_env())
+        log.info("model service: %s", backend.models.health())
+        for c in (DOCS, CHUNKS):
+            log.info("%s: %s points", c, backend.client.count(c).count)
+        return backend
+    raise ValueError(f"unknown backend {name!r}; use local or qdrant")
+
+
+def start_loading(backend: str, data_dir: Path, dense: str, device: str) -> "Future[SearchBackend]":
     fut: Future = Future()
 
     def run() -> None:
         try:
-            log.info("loading indexes from %s (dense=%s, device=%s)", data_dir, dense, device)
-            fut.set_result(LocalSearch.load(data_dir, dense=dense, device=device))
+            log.info("loading %s backend", backend)
+            fut.set_result(make_backend(backend, data_dir, dense, device))
             log.info("ready")
         except Exception as e:
-            log.exception("index load failed")
+            log.exception("backend failed to load")
             fut.set_exception(e)
 
     threading.Thread(target=run, name="orgbrain-load", daemon=True).start()
@@ -87,6 +103,7 @@ def start_loading(data_dir: Path, dense: str, device: str) -> "Future[SearchBack
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="orgbrain-search", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--backend", choices=["local", "qdrant"], default="local")
     p.add_argument("--data-dir", type=Path, default=ROOT / "data")
     p.add_argument("--dense", choices=["fp16", "binary"], default="fp16")
     p.add_argument("--device", default="cuda")
@@ -94,7 +111,7 @@ def main() -> None:
     p.add_argument("--port", type=int, default=8765)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
-    build_server(start_loading(a.data_dir, a.dense, a.device)).run("streamable-http", host=a.host, port=a.port)
+    build_server(start_loading(a.backend, a.data_dir, a.dense, a.device)).run("streamable-http", host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

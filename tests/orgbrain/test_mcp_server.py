@@ -44,3 +44,12 @@ def test_unknown_doc_is_a_tool_error():
 def test_structured_rejects_results_without_content():
     with pytest.raises(ValueError):
         structured(object())
+
+
+def test_make_backend_rejects_unknown_name():
+    from pathlib import Path
+
+    from orgbrain.mcp_server import make_backend
+
+    with pytest.raises(ValueError, match="backend"):
+        make_backend("opensearch", Path("."), "fp16", "cpu")
