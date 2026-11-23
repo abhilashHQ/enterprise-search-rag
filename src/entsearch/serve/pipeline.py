@@ -29,6 +29,7 @@ class Config:
     data_dir: Path
     router: bool = True
     rerank: bool = True
+    rerank_depth: int = 100  # fused docs the cross-encoder scores; the rest keep fused order
     dense: str = "fp16"  # fp16 | binary | none
     device: str = "cuda"
     # Padded tokens per rerank batch. Half the batch scripts' 16384: on Windows (WDDM) every CUDA allocation is backed
@@ -38,7 +39,8 @@ class Config:
     verify: bool = True  # confidence flag: gpt-6-luna verifier through the local bridge + reranker top-score threshold
 
     def describe(self) -> dict:
-        return {"router": self.router, "rerank": self.rerank, "dense": self.dense, "verify": self.verify}
+        return {"router": self.router, "rerank": self.rerank, "rerank_depth": self.rerank_depth, "dense": self.dense,
+                "verify": self.verify}
 
 
 @dataclass
@@ -123,10 +125,11 @@ class Pipeline:
         gen = llm.generate(llm.client(), router.build_prompt(query), effort="low")
         return router.parse(gen.text), 0.0 if gen.cached else gen.cost
 
-    def search(self, query: str, k: int = 10) -> SearchResult:
-        return self._search(query, k)[0]
+    def search(self, query: str, k: int = 10, sources: list[str] | None = None) -> SearchResult:
+        return self._search(query, k, sources=sources)[0]
 
-    def _search(self, query: str, k: int, emit: Emit | None = None) -> tuple[SearchResult, float]:
+    def _search(self, query: str, k: int, emit: Emit | None = None,
+                sources: list[str] | None = None) -> tuple[SearchResult, float]:
         t, cost = {}, 0.0
         emit = emit or (lambda event, payload: None)
         clock = time.perf_counter()
@@ -138,11 +141,14 @@ class Pipeline:
             clock = now
 
         routed: list[str] = []
-        if self.cfg.router:
-            routed, cost = self.route(query)
-            lap("route")
-            emit("route", {"sources": routed, "seconds": t["route"]})
-        filters = [None, routed] if routed else [None]
+        if sources is not None:
+            filters = [list(sources)]
+        else:
+            if self.cfg.router:
+                routed, cost = self.route(query)
+                lap("route")
+                emit("route", {"sources": routed, "seconds": t["route"]})
+            filters = [None, routed] if routed else [None]
         dense = [[] for _ in filters]
         if self.dense is not None:
             dense = self.dense.search_many(self.encoder(query), DEPTH, filters)
@@ -164,16 +170,17 @@ class Pipeline:
 
         rerank: dict[str, float] = {}
         if self.reranker is not None and ids:
-            scores = self.reranker.score(query, [doc_text(docs[d][1], docs[d][2]) for d in ids])
-            ids = [ids[i] for i in np.argsort(-scores, kind="stable")]
-            rerank = dict(zip([d for d, _ in fused], scores.tolist()))
+            head = ids[: self.cfg.rerank_depth]
+            scores = self.reranker.score(query, [doc_text(docs[d][1], docs[d][2]) for d in head])
+            ids = [head[i] for i in np.argsort(-scores, kind="stable")] + ids[len(head):]
+            rerank = dict(zip(head, scores.tolist()))
             self._release_gpu_cache()
             lap("rerank")
             fused_rank = {d: r for r, (d, _) in enumerate(fused, 1)}
             emit("rerank", {
                 "hits": [{"rank": r, "doc_id": d, "source": docs[d][0], "title": docs[d][1], "snippet": docs[d][2][:SNIPPET],
-                          "rerank_score": rerank[d], "fused_rank": fused_rank[d]} for r, d in enumerate(ids[:k], 1)],
-                "order": [{"doc_id": d, "rerank_score": rerank[d]} for d in ids],
+                          "rerank_score": rerank.get(d), "fused_rank": fused_rank[d]} for r, d in enumerate(ids[:k], 1)],
+                "order": [{"doc_id": d, "rerank_score": rerank[d]} for d in ids if d in rerank],
                 "seconds": t["rerank"],
             })
 
