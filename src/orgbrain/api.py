@@ -35,6 +35,7 @@ class AskRequest(BaseModel):
     conversation_id: str | None = None
     user_id: str | None = None
     rerun: bool = False
+    cache: bool = True
 
 
 class DecideRequest(BaseModel):
@@ -74,7 +75,7 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
             async with busy:
                 start, results, text = time.perf_counter(), [], ""
                 try:
-                    use_cache = cache is not None and embed is not None and req.conversation_id is None
+                    use_cache = cache is not None and embed is not None and req.conversation_id is None and req.cache
                     qvec = await asyncio.to_thread(embed, req.message) if use_cache else None
                     if qvec is not None and not req.rerun and (hit := await cache.get(qvec)):
                         answer = {k: hit[k] for k in ("text", "citations")}
@@ -97,7 +98,10 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                             if ev.result:
                                 results.append(ev.result)
                             count = len(ev.result["results"]) if ev.result and "results" in ev.result else None
-                            yield {"event": "step", "data": json.dumps({"kind": "tool_result", "tool": ev.tool, "count": count, "error": ev.error})}
+                            step = {"kind": "tool_result", "tool": ev.tool, "count": count, "error": ev.error}
+                            if ev.tool == "propose_memory" and ev.result and "id" in ev.result:
+                                step["memory_id"] = ev.result["id"]
+                            yield {"event": "step", "data": json.dumps(step)}
                         elif isinstance(ev, Message):
                             text = ev.text
                             yield {"event": "message", "data": json.dumps({"text": ev.text})}

@@ -183,3 +183,35 @@ async def test_the_runtime_message_carries_the_teammate_and_conversation_ids():
     assert rt.messages[-1] == f"(Teammate: Maria Lopez, id maria; conversation {cid})\n\nremember X"
     await ask(app, {"message": "q", "user_id": "nobody", "conversation_id": cid})
     assert rt.messages[-1] == f"(conversation {cid})\n\nq"
+
+
+@pytest.mark.anyio
+async def test_cache_false_neither_reads_nor_writes_the_cache():
+    import fakeredis
+
+    from orgbrain.cache import VECS, SemanticCache
+
+    rt = RecordingRuntime()
+    _, store = await app_for(rt)
+    redis = fakeredis.aioredis.FakeRedis()
+    app = create_app(rt, store, cache=SemanticCache(redis), embed=lambda text: [1.0, 0.0, 0.0])
+    await ask(app, {"message": "rollback?", "cache": False})
+    await ask(app, {"message": "rollback?", "cache": False})
+    assert len(rt.sessions) == 2 and await redis.hlen(VECS) == 0
+
+
+class ProposingRuntime(FakeRuntime):
+    async def run(self, message, session_id=None):
+        yield ToolCall("propose_memory", {"fact": "x"})
+        yield ToolResult("propose_memory", {"fact": "x"}, {"id": 7, "status": "pending"}, None)
+        yield Message("Proposed.")
+        yield Done("s", {})
+
+
+@pytest.mark.anyio
+async def test_propose_memory_step_carries_the_memory_id():
+    app, _ = await app_for(ProposingRuntime())
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+        events = parse_sse((await c.post("/api/ask", json={"message": "remember x"})).text)
+    step = [d for n, d in events if n == "step" and d["kind"] == "tool_result"][0]
+    assert step["memory_id"] == 7
