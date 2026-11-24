@@ -18,7 +18,7 @@ from entsearch.analysis import tokenize
 from entsearch.data import doc_text
 from entsearch.retrieval.rrf import rrf
 from orgbrain.bm25 import query_vector
-from orgbrain.fts import PhraseIndex
+from orgbrain.fts import PhraseIndex, ensure_live
 from orgbrain.refs import ref
 from orgbrain.search import Doc, Hit
 
@@ -102,7 +102,9 @@ class QdrantSearch:
     def connect(cls, settings) -> "QdrantSearch":
         from orgbrain.models_client import ModelsClient
 
-        phrases = PhraseIndex(settings.fts_path, settings.docstore_path) if settings.fts_path.exists() else None
+        ensure_live(settings.live_path)
+        phrases = (PhraseIndex(settings.fts_path, settings.docstore_path, settings.live_path)
+                   if settings.fts_path.exists() else None)
         return cls(QdrantClient(url=settings.qdrant_url, timeout=120), ModelsClient(settings.models_url), phrases=phrases)
 
     @staticmethod

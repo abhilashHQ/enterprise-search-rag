@@ -6,7 +6,7 @@ from entsearch.data import ROOT
 
 ENV = {"qdrant_url": "ORGBRAIN_QDRANT_URL", "models_url": "ORGBRAIN_MODELS_URL", "database_url": "ORGBRAIN_DATABASE_URL",
        "fts_path": "ORGBRAIN_FTS_PATH", "docstore_path": "ORGBRAIN_DOCSTORE_PATH", "redis_url": "ORGBRAIN_REDIS_URL",
-       "bm25_stats_path": "ORGBRAIN_BM25_STATS_PATH"}
+       "bm25_stats_path": "ORGBRAIN_BM25_STATS_PATH", "live_path": "ORGBRAIN_LIVE_PATH"}
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,7 @@ class Settings:
     docstore_path: Path = ROOT / "data/index/docstore.sqlite"
     redis_url: str = "redis://127.0.0.1:6379/0"
     bm25_stats_path: Path = ROOT / "data/index/bm25.json"
+    live_path: Path = ROOT / "data/orgbrain/live.sqlite"
 
     @classmethod
     def from_env(cls) -> "Settings":

@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 data/erb/
 data/index/
+data/orgbrain/
 data/bakeoff/
 data/hf_cache/
 third_party/

@@ -28,21 +28,44 @@ def build(docstore: Path, out: Path) -> None:
     con.close()
 
 
+def ensure_live(path: Path) -> None:
+    """The live store for documents ingested after the Redwood load: docs plus a contentless FTS5 index keyed by
+    docs.rowid, in one file. The ingest worker is its only writer; the Redwood files are never written."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE IF NOT EXISTS docs (doc_id TEXT PRIMARY KEY, source_type TEXT, title TEXT, content TEXT)")
+    con.execute("CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(title, content, content='', "
+                "tokenize='unicode61 remove_diacritics 2')")
+    con.commit()
+    con.close()
+
+
 class PhraseIndex:
-    def __init__(self, fts: Path, docstore: Path):
+    """Phrase lookup over the Redwood index and, when given, the live store; results merged by BM25 score."""
+
+    def __init__(self, fts: Path, docstore: Path, live: Path | None = None):
         self.con = sqlite3.connect(f"file:{fts.as_posix()}?mode=ro", uri=True, check_same_thread=False)
         self.con.execute("ATTACH DATABASE ? AS store", (f"file:{docstore.as_posix()}?mode=ro",))
+        self.live = (sqlite3.connect(f"file:{live.as_posix()}?mode=ro", uri=True, timeout=30, check_same_thread=False)
+                     if live else None)
 
-    def search(self, phrase: str, sources: list[str] | None, k: int) -> list[tuple[str, str, str, str]]:
-        """(doc_id, source, title, content) of documents containing the phrase, best BM25 first."""
-        match = '"' + phrase.replace('"', '""') + '"'
-        sql = ("SELECT d.doc_id, d.source_type, d.title, d.content FROM fts JOIN store.docs d ON d.rowid = fts.rowid "
-               "WHERE fts MATCH ?")
+    @staticmethod
+    def _query(con: sqlite3.Connection, docs: str, match: str, sources: list[str] | None, k: int) -> list[tuple]:
+        sql = (f"SELECT d.doc_id, d.source_type, d.title, d.content, bm25(fts) FROM fts JOIN {docs} d "
+               "ON d.rowid = fts.rowid WHERE fts MATCH ?")
         args: list = [match]
         if sources:
             sql += f" AND d.source_type IN ({','.join('?' * len(sources))})"
             args += sources
-        return self.con.execute(sql + " ORDER BY bm25(fts) LIMIT ?", [*args, k]).fetchall()
+        return con.execute(sql + " ORDER BY bm25(fts) LIMIT ?", [*args, k]).fetchall()
+
+    def search(self, phrase: str, sources: list[str] | None, k: int) -> list[tuple[str, str, str, str]]:
+        """(doc_id, source, title, content) of documents containing the phrase, best BM25 first."""
+        match = '"' + phrase.replace('"', '""') + '"'
+        rows = self._query(self.con, "store.docs", match, sources, k)
+        if self.live is not None:
+            rows = sorted(rows + self._query(self.live, "docs", match, sources, k), key=lambda r: r[4])
+        return [r[:4] for r in rows[:k]]
 
 
 if __name__ == "__main__":
