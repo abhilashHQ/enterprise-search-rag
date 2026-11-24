@@ -39,3 +39,9 @@ def test_custom_constitution_must_name_the_company(tmp_path):
     bad.write_text("No placeholder here.", encoding="utf8")
     with pytest.raises(ValueError, match="company"):
         instructions("Acme", bad)
+
+
+def test_collect_hits_skips_results_that_are_not_documents():
+    people = {"query": "renewals", "results": [{"id": "markus.klein", "name": "Markus Klein"}]}
+    docs = {"results": [{"ref": "a1b2c3", "doc_id": "d1", "source": "jira", "title": "T"}]}
+    assert collect_hits([people, docs]) == {"a1b2c3": {"doc_id": "d1", "source": "jira", "title": "T"}}

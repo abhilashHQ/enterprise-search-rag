@@ -23,7 +23,7 @@ def collect_hits(tool_results: list[dict]) -> dict[str, dict]:
     hits: dict[str, dict] = {}
     for r in tool_results:
         rows = r.get("results", []) + ([r] if "ref" in r else [])
-        for h in rows:
+        for h in (h for h in rows if "ref" in h):
             hits.setdefault(h["ref"], {"doc_id": h["doc_id"], "source": h["source"], "title": h["title"]})
     return hits
 
