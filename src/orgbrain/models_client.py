@@ -13,6 +13,9 @@ class ModelsClient:
     def embed_query(self, text: str) -> list[float]:
         return self._post("/embed", {"texts": [text]})["vectors"][0]
 
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._post("/embed", {"texts": texts, "kind": "document"})["vectors"]
+
     def rerank(self, query: str, documents: list[str]) -> list[float]:
         return self._post("/rerank", {"query": query, "documents": documents})["scores"]
 

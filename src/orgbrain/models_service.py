@@ -6,6 +6,7 @@
 import argparse
 import threading
 from collections.abc import Callable
+from typing import Literal
 
 import numpy as np
 from fastapi import FastAPI
@@ -14,6 +15,7 @@ from pydantic import BaseModel
 
 class EmbedRequest(BaseModel):
     texts: list[str]
+    kind: Literal["query", "document"] = "query"
 
 
 class RerankRequest(BaseModel):
@@ -21,7 +23,8 @@ class RerankRequest(BaseModel):
     documents: list[str]
 
 
-def create_app(embed: Callable[[str], np.ndarray], rerank: Callable[[str, list[str]], np.ndarray], info: dict) -> FastAPI:
+def create_app(embed_query: Callable[[str], np.ndarray], embed_document: Callable[[str], np.ndarray],
+               rerank: Callable[[str, list[str]], np.ndarray], info: dict) -> FastAPI:
     app = FastAPI(title="orgbrain-models")
     lock = threading.Lock()
 
@@ -31,8 +34,9 @@ def create_app(embed: Callable[[str], np.ndarray], rerank: Callable[[str, list[s
 
     @app.post("/embed")
     def embed_(req: EmbedRequest):
+        fn = embed_query if req.kind == "query" else embed_document
         with lock:
-            return {"vectors": [np.asarray(embed(t), dtype=np.float32).tolist() for t in req.texts]}
+            return {"vectors": [np.asarray(fn(t), dtype=np.float32).tolist() for t in req.texts]}
 
     @app.post("/rerank")
     def rerank_(req: RerankRequest):
@@ -48,7 +52,7 @@ def main() -> None:
     import torch
     import uvicorn
 
-    from entsearch.retrieval.dense import MODEL as EMBEDDER, QueryEncoder
+    from entsearch.retrieval.dense import DOC_TEMPLATE, MODEL as EMBEDDER, QueryEncoder
     from entsearch.retrieval.rerank import MODEL as RERANKER, Reranker
 
     p = argparse.ArgumentParser(prog="orgbrain-models", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -66,7 +70,8 @@ def main() -> None:
             if a.device == "cuda":
                 torch.cuda.empty_cache()
 
-    uvicorn.run(create_app(encoder, rerank, {"embedder": EMBEDDER, "reranker": RERANKER}), host=a.host, port=a.port)
+    uvicorn.run(create_app(encoder, lambda t: encoder.encode(t, DOC_TEMPLATE), rerank,
+                           {"embedder": EMBEDDER, "reranker": RERANKER}), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

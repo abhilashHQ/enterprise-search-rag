@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 MODEL = "Qwen/Qwen3-Embedding-0.6B"
 # Model-card default task description and format; not tuned on this benchmark.
 QUERY_TEMPLATE = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:{q}"
+DOC_TEMPLATE = "{q}"
 CHUNK_LIMIT = 4000
 OVERSAMPLE = 4
 
@@ -33,11 +34,14 @@ class QueryEncoder:
         dtype = torch.float16 if device == "cuda" else torch.float32
         self.model = AutoModel.from_pretrained(model, dtype=dtype, device_map=device).eval()
 
-    def __call__(self, query: str) -> np.ndarray:
-        ids = self.tok(QUERY_TEMPLATE.format(q=query), return_tensors="pt").input_ids.to(self.device)
+    def encode(self, text: str, template: str = QUERY_TEMPLATE) -> np.ndarray:
+        ids = self.tok(template.format(q=text), return_tensors="pt").input_ids.to(self.device)
         with self.torch.inference_mode():
             h = self.model(input_ids=ids).last_hidden_state[0, -1].float()
         return (h / h.norm()).cpu().numpy()
+
+    def __call__(self, query: str) -> np.ndarray:
+        return self.encode(query)
 
 
 class DenseIndex:
