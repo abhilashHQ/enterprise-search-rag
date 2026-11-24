@@ -50,3 +50,13 @@ def test_collect_hits_skips_results_that_are_not_documents():
     people = {"query": "renewals", "results": [{"id": "markus.klein", "name": "Markus Klein"}]}
     docs = {"results": [{"ref": "a1b2c3", "doc_id": "d1", "source": "jira", "title": "T"}]}
     assert collect_hits([people, docs]) == {"a1b2c3": {"doc_id": "d1", "source": "jira", "title": "T"}}
+
+
+def test_an_answer_naming_people_find_people_returned_is_not_abstained():
+    from orgbrain.answer import collect_people
+
+    found = {"query": "renewals", "results": [{"id": "diana.park", "name": "Diana Park", "role": "AE"}]}
+    people = collect_people([SEARCH, found])
+    assert people == {"diana.park": "Diana Park"}
+    assert not finalize("Talk to diana park; she handles renewals.", {}, people).abstained
+    assert finalize("I couldn't find anyone who owns renewals.", {}, people).abstained

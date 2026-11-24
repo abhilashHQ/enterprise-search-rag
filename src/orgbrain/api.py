@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sse_starlette.sse import EventSourceResponse
 
 from entsearch.data import ROOT
-from orgbrain.answer import collect_hits, finalize
+from orgbrain.answer import collect_hits, collect_people, finalize
 from orgbrain.config import Settings
 from orgbrain.db import ConversationStore
 from orgbrain.instructions import instructions
@@ -101,7 +101,7 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                             text = ev.text
                             yield {"event": "message", "data": json.dumps({"text": ev.text})}
                         elif isinstance(ev, Done):
-                            answer = asdict(finalize(text, collect_hits(results)))
+                            answer = asdict(finalize(text, collect_hits(results), collect_people(results)))
                             await store.save_turn(cid, runtime.name, ev.session_id, req.message, answer["text"],
                                                   answer["citations"])
                             if qvec is not None:

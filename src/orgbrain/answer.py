@@ -28,7 +28,17 @@ def collect_hits(tool_results: list[dict]) -> dict[str, dict]:
     return hits
 
 
-def finalize(text: str, hits: dict[str, dict]) -> Answer:
+def collect_people(tool_results: list[dict]) -> dict[str, str]:
+    """id -> name of every person find_people returned (rows with an id and a name, and no document ref)."""
+    return {p["id"]: p["name"] for r in tool_results for p in r.get("results", [])
+            if "ref" not in p and "id" in p and "name" in p}
+
+
+def finalize(text: str, hits: dict[str, dict], people: dict[str, str] | None = None) -> Answer:
+    """An answer is grounded by a resolved citation or by naming a person the directory returned; otherwise it counts
+    as abstained."""
     refs = cited_refs(text)
     citations = [Citation(r, **hits[r]) for r in refs if r in hits]
-    return Answer(text=text, citations=citations, abstained=not citations, unknown_refs=[r for r in refs if r not in hits])
+    named = any(name.lower() in text.lower() for name in (people or {}).values())
+    return Answer(text=text, citations=citations, abstained=not citations and not named,
+                  unknown_refs=[r for r in refs if r not in hits])

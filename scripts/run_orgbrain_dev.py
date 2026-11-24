@@ -17,7 +17,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from entsearch.data import ROOT, load_questions
-from orgbrain.answer import collect_hits, finalize
+from orgbrain.answer import collect_hits, collect_people, finalize
 from orgbrain.instructions import instructions
 from orgbrain.refs import _CITE
 from orgbrain.runtime.codex import CodexConfig, CodexRuntime
@@ -35,7 +35,7 @@ async def answer_one(runtime: CodexRuntime, question: str) -> dict:
             text = ev.text
         elif isinstance(ev, Done):
             usage = ev.usage
-    ans = finalize(text, collect_hits(results))
+    ans = finalize(text, collect_hits(results), collect_people(results))
     return {"raw": text, "citations": [asdict(c) for c in ans.citations], "abstained": ans.abstained,
             "unknown_refs": ans.unknown_refs, "tool_calls": calls, "usage": usage,
             "seconds": round(time.perf_counter() - start, 1)}
