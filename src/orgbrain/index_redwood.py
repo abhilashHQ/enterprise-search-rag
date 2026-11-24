@@ -6,6 +6,7 @@
 """
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -22,6 +23,16 @@ from orgbrain.config import Settings
 from orgbrain.qdrant_store import CHUNKS, DOCS, chunk_point_id, doc_point_id, ensure_collections
 
 
+def write_bm25_stats(path: Path, doc_len: np.ndarray) -> dict:
+    stats = {"avgdl": float(np.mean(doc_len)), "n_docs": int(len(doc_len))}
+    path.write_text(json.dumps(stats), encoding="utf8")
+    return stats
+
+
+def read_bm25_stats(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf8"))
+
+
 def load_docs(client: QdrantClient, index: Path, batch: int) -> None:
     sparse_dir = index / "sparse"
     doc_ids = sparse_dir.joinpath("doc_ids.txt").read_text(encoding="utf8").splitlines()
@@ -30,6 +41,7 @@ def load_docs(client: QdrantClient, index: Path, batch: int) -> None:
     print(f"vocab {len(vocab):,} terms, {len(vocab) - len(np.unique(hashes)):,} lose a distinct id to hash collisions")
     doc_len = np.load(sparse_dir / "doc_len.npy")
     avgdl = float(doc_len.mean())
+    write_bm25_stats(Settings.from_env().bm25_stats_path, doc_len)
     tf = sp.load_npz(sparse_dir / "tf.npz").tocsr()
     store = DocStore(index / "docstore.sqlite")
     if len(store.sources()) != len(doc_ids):
@@ -74,8 +86,11 @@ def main() -> None:
     p.add_argument("--skip-chunks", action="store_true")
     p.add_argument("--from-shard", type=int, default=0)
     p.add_argument("--batch", type=int, default=256)
+    p.add_argument("--recreate-docs", action="store_true", help="drop and reload the documents collection")
     a = p.parse_args()
     client = QdrantClient(url=Settings.from_env().qdrant_url, timeout=300)
+    if a.recreate_docs and client.collection_exists(DOCS):
+        client.delete_collection(DOCS)
     ensure_collections(client, bulk=True)
     if not a.skip_docs:
         load_docs(client, a.index_dir, a.batch)
