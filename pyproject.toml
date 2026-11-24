@@ -45,6 +45,7 @@ app = [
     "sqlalchemy[asyncio]>=2.0.36",
     "alembic>=1.14",
     "asyncpg>=0.30",
+    "redis>=5.2",
 ]
 
 [project.scripts]
@@ -54,6 +55,7 @@ orgbrain-search = "orgbrain.mcp_server:main"
 orgbrain-api = "orgbrain.api:main"
 orgbrain-models = "orgbrain.models_service:main"
 orgbrain-index-redwood = "orgbrain.index_redwood:main"
+orgbrain-worker = "orgbrain.worker:main"
 
 [dependency-groups]
 dev = [
@@ -61,6 +63,7 @@ dev = [
     "bm25s",
     "tabulate>=0.10.0",
     "aiosqlite>=0.20",
+    "fakeredis>=2.26",
 ]
 
 [build-system]
