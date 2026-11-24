@@ -70,7 +70,7 @@ async def run(settings, consumer: str) -> None:
     from orgbrain.waiting import wait_for
 
     sessions = async_sessionmaker(create_async_engine(settings.database_url), expire_on_commit=False)
-    redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    redis = Redis.from_url(settings.redis_url, decode_responses=True, socket_timeout=30)
     models_ = ModelsClient(settings.models_url)
     wait_for(models_.health, "model service")
     writer = IndexWriter(QdrantClient(url=settings.qdrant_url, timeout=120), models_,
