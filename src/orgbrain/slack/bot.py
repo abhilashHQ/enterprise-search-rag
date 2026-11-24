@@ -35,9 +35,15 @@ def memory_blocks(memory_id: int, fact: str) -> list[dict]:
 
 async def answer_in_thread(client, api, channel: str, thread_ts: str, text: str, user_id: str | None,
                            min_interval: float = 1.0) -> dict | None:
+    start = time.perf_counter()
     status = await client.chat_postMessage(channel=channel, thread_ts=thread_ts, text="Looking into it...")
+    log.info("status posted in %s %s after %.1fs", channel, thread_ts, time.perf_counter() - start)
     try:
-        return await _stream_answer(client, api, channel, thread_ts, text, user_id, min_interval, status["ts"])
+        answer = await _stream_answer(client, api, channel, thread_ts, text, user_id, min_interval, status["ts"])
+        if answer is not None:
+            log.info("%s in %s %s after %.1fs", "answer from cache" if answer.get("from_cache") else "codex call: full turn",
+                     channel, thread_ts, time.perf_counter() - start)
+        return answer
     except Exception as e:
         log.exception("answer failed in %s %s", channel, thread_ts)
         await client.chat_update(channel=channel, ts=status["ts"], text=to_mrkdwn(f"I hit an error: {e}"))
@@ -150,8 +156,31 @@ async def run(settings) -> None:
 
     from orgbrain.slack.api_client import OrgbrainApi
 
+    from collections import deque
+
+    from redis.asyncio import Redis
+
+    from entsearch.data import ROOT
+    from orgbrain.runtime.codex import CodexConfig, CodexRuntime
+    from orgbrain.runtime.events import Message
+    from orgbrain.slack.proactive import Budget, consider, parse_triage
+
     sessions, names, index_lock = sessions_for(settings), Names(), asyncio.Lock()
     await ensure_source(sessions)
+    api, users = OrgbrainApi(settings.api_url), settings.slack_user_map()
+    budget = Budget(Redis.from_url(settings.redis_url), int(settings.proactive_per_hour))
+    triage_rt = CodexRuntime(CodexConfig(model=settings.triage_model, effort="low", mcp_url=None,
+                                         workdir=ROOT / "data/codex_work"), instructions="")
+    recent: dict[str, deque] = {}
+    turn_lock = asyncio.Lock()
+
+    async def triage(prompt: str) -> bool:
+        start, text = time.perf_counter(), ""
+        async for ev in triage_rt.run(prompt):
+            if isinstance(ev, Message):
+                text = ev.text
+        log.info("codex call: triage %s in %.1fs", text.strip()[:40] or "(empty)", time.perf_counter() - start)
+        return parse_triage(text)
 
     async def on_channel_message(event, client):
         thread_ts = event.get("thread_ts") or event["ts"]
@@ -160,8 +189,24 @@ async def run(settings) -> None:
         async with index_lock:
             await index_message(sessions, event["channel"], channel_name, thread_ts, speaker, event["text"])
         log.info("indexed %s in #%s", thread_ts, channel_name)
+        lines = recent.setdefault(event["channel"], deque(maxlen=20))
+        before = list(lines)
+        lines.append(f"{speaker}: {event['text']}")
+        if turn_lock.locked():
+            log.info("proactive busy, dropped %s in #%s", event["ts"], channel_name)
+            return
+        async with turn_lock:
+            start = time.perf_counter()
+            try:
+                outcome = await consider(event, client, api, triage, budget, channel_name, before, users.get(event["user"]))
+            except Exception:
+                log.exception("proactive failed on %s in #%s", event["ts"], channel_name)
+                return
+            log.info("proactive %s on %s in #%s in %.1fs", outcome, event["ts"], channel_name, time.perf_counter() - start)
+            if outcome not in ("skipped", "over_budget"):
+                log.info("codex call: full proactive turn (%s)", outcome)
 
-    app = build_app(settings, OrgbrainApi(settings.api_url), sessions, on_channel_message)
+    app = build_app(settings, api, sessions, on_channel_message)
     handler = AsyncSocketModeHandler(app, settings_token("ORGBRAIN_SLACK_APP_TOKEN"))
     await handler.connect_async()
     log.info("connected over Socket Mode")

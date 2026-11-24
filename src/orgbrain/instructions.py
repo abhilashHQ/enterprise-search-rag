@@ -17,5 +17,6 @@ def instructions(company: str = "Redwood Inference", path: Path | None = None) -
              "`find_people` finds colleagues by name, role, team or topic; roles and topics are inferred from the record. "
              "`propose_memory` proposes a fact for an admin to approve. Each message starts with a line like "
              "`(Teammate: Name, id ...; conversation ...)`: pass that id as `proposed_by` and the conversation id as "
-             "`conversation_id`.\n")
+             "`conversation_id`. When you're watching a channel and nobody addressed you, the message tells you the reply "
+             "format; follow it exactly.\n")
     return text.replace("{company}", company) + tools
