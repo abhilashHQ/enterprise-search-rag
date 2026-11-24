@@ -21,16 +21,18 @@ from orgbrain.answer import collect_hits, collect_people, finalize
 from orgbrain.instructions import instructions
 from orgbrain.refs import _CITE
 from orgbrain.runtime.codex import CodexConfig, CodexRuntime
-from orgbrain.runtime.events import Done, Message, ToolCall, ToolResult
+from orgbrain.runtime.events import Done, Message, ToolResult
 
 
 async def answer_one(runtime: CodexRuntime, question: str) -> dict:
     start, results, calls, text, usage = time.perf_counter(), [], [], "", {}
     async for ev in runtime.run(question):
-        if isinstance(ev, ToolCall):
-            calls.append({"tool": ev.tool, "arguments": ev.arguments})
-        elif isinstance(ev, ToolResult) and ev.result:
-            results.append(ev.result)
+        if isinstance(ev, ToolResult):
+            res = ev.result or {}
+            ids = [r["doc_id"] for r in res.get("results", []) if "doc_id" in r] or ([res["doc_id"]] if "doc_id" in res else [])
+            calls.append({"tool": ev.tool, "arguments": ev.arguments, "doc_ids": ids, "error": ev.error})
+            if ev.result:
+                results.append(ev.result)
         elif isinstance(ev, Message):
             text = ev.text
         elif isinstance(ev, Done):
