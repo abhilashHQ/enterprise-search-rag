@@ -120,3 +120,48 @@ async def test_memory_endpoints_enforce_admin():
         assert (await c.get("/api/memories?status=pending")).json() == [{"id": 1, "status": "pending"}]
         assert (await c.post("/api/memories/1/approve", json={"user_id": "sam"})).status_code == 403
         assert (await c.post("/api/memories/1/approve", json={"user_id": "maria"})).json()["status"] == "approved"
+
+
+class RecordingRuntime(FakeRuntime):
+    def __init__(self):
+        super().__init__()
+        self.messages = []
+
+    async def run(self, message, session_id=None):
+        self.messages.append(message)
+        async for ev in super().run(message, session_id):
+            yield ev
+
+
+async def cached_app(rt):
+    import fakeredis
+
+    from orgbrain.cache import SemanticCache
+
+    _, store = await app_for(rt)
+    cache = SemanticCache(fakeredis.aioredis.FakeRedis())
+    return create_app(rt, store, cache=cache, embed=lambda text: [1.0, 0.0, 0.0]), store
+
+
+@pytest.mark.anyio
+async def test_repeat_question_comes_from_the_cache_and_rerun_bypasses_it():
+    rt = RecordingRuntime()
+    app, _ = await cached_app(rt)
+    await ask(app, {"message": "rollback?"})
+    _, events = await ask(app, {"message": "rollback?"})
+    assert [n for n, _ in events] == ["answer", "done"] and events[0][1]["from_cache"] and events[1][1]["from_cache"]
+    assert events[0][1]["text"] == "Pin the previous tag [a1b2c3]." and len(rt.sessions) == 1
+    _, events = await ask(app, {"message": "rollback?", "rerun": True})
+    assert "from_cache" not in events[-2][1] and len(rt.sessions) == 2
+
+
+@pytest.mark.anyio
+async def test_follow_up_to_a_cached_answer_carries_the_earlier_turn():
+    rt = RecordingRuntime()
+    app, _ = await cached_app(rt)
+    await ask(app, {"message": "rollback?"})
+    _, events = await ask(app, {"message": "rollback?"})
+    await ask(app, {"message": "and staging?", "conversation_id": events[0][1]["conversation_id"]})
+    assert rt.sessions == [None, None]
+    assert rt.messages[-1] == ("Earlier in this conversation:\nuser: rollback?\nassistant: Pin the previous tag [a1b2c3]."
+                               "\n\nand staging?")

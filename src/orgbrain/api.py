@@ -34,6 +34,7 @@ class AskRequest(BaseModel):
     message: str
     conversation_id: str | None = None
     user_id: str | None = None
+    rerun: bool = False
 
 
 class DecideRequest(BaseModel):
@@ -73,8 +74,19 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
             async with busy:
                 start, results, text = time.perf_counter(), [], ""
                 try:
+                    use_cache = cache is not None and embed is not None and req.conversation_id is None
+                    qvec = await asyncio.to_thread(embed, req.message) if use_cache else None
+                    if qvec is not None and not req.rerun and (hit := await cache.get(qvec)):
+                        answer = {k: hit[k] for k in ("text", "citations")}
+                        await store.save_turn(cid, runtime.name, None, req.message, answer["text"], answer["citations"])
+                        yield {"event": "answer", "data": json.dumps({**answer, "conversation_id": cid, "from_cache": True})}
+                        yield {"event": "done", "data": json.dumps({"seconds": round(time.perf_counter() - start, 2), "from_cache": True})}
+                        return
                     prior = await store.runtime_session(cid)
                     message = req.message
+                    if prior is None and req.conversation_id and (msgs := await store.messages(cid)):
+                        earlier = "\n".join(f"{m['role']}: {m['text']}" for m in msgs)
+                        message = f"Earlier in this conversation:\n{earlier}\n\n{message}"
                     if req.user_id and people is not None and (person := await people.get(req.user_id)):
                         message = f"(Teammate: {person['name']}, id {req.user_id})\n\n{message}"
                     async for ev in runtime.run(message, prior):
@@ -92,6 +104,8 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                             answer = asdict(finalize(text, collect_hits(results)))
                             await store.save_turn(cid, runtime.name, ev.session_id, req.message, answer["text"],
                                                   answer["citations"])
+                            if qvec is not None:
+                                await cache.put(req.message, qvec, answer)
                             yield {"event": "answer", "data": json.dumps({**answer, "conversation_id": cid})}
                             yield {"event": "done", "data": json.dumps({"seconds": round(time.perf_counter() - start, 2), "usage": ev.usage})}
                 except Exception as e:
@@ -128,9 +142,16 @@ def main() -> None:
 
         client = AsyncOpenAI(base_url=a.base_url, api_key=os.environ[a.api_key_env])
         runtime = ApiRuntime(client, a.model, McpToolCaller(a.mcp_url), rules)
-    store = ConversationStore(create_async_engine(Settings.from_env().database_url))
-    uvicorn.run(create_app(runtime, store, memories=MemoryStore(store.sessions), people=PeopleStore(store.sessions)),
-                host=a.host, port=a.port)
+    from redis.asyncio import Redis
+
+    from orgbrain.cache import SemanticCache
+    from orgbrain.models_client import ModelsClient
+
+    settings = Settings.from_env()
+    store = ConversationStore(create_async_engine(settings.database_url))
+    uvicorn.run(create_app(runtime, store, memories=MemoryStore(store.sessions), people=PeopleStore(store.sessions),
+                           cache=SemanticCache(Redis.from_url(settings.redis_url)),
+                           embed=ModelsClient(settings.models_url).embed_query), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":
