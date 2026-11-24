@@ -16,10 +16,10 @@ def _h(s: str) -> int:
 
 
 def _speaker_lines(content: str):
-    fence = False
+    fence, fences_balance = False, content.count("```") % 2 == 0
     for line in content.splitlines():
         yield line, None if fence else SPEAKER.match(line)
-        if line.lstrip().startswith("```") and line.count("```") % 2:
+        if fences_balance and line.count("```") % 2:
             fence = not fence
 
 

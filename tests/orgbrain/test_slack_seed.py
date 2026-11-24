@@ -42,6 +42,19 @@ def test_parse_thread_with_known_speakers_keeps_labels_and_code_as_text():
         ("Note", "twice means a speaker")]
 
 
+def test_fences_opened_or_closed_mid_line_are_tracked():
+    content = ("ashley: log sample:```[09:11:43Z] status=502\n"
+               "kevin: inside the fence\n"
+               "[09:11:44Z] stall```\n"
+               "ajay: rolling back")
+    assert [n for n, _ in parse_thread(content)] == ["Ashley", "Ajay"]
+
+
+def test_an_unclosed_fence_does_not_swallow_later_speakers():
+    content = "evan: trace below\n```\nOOM at step 4\nmaya: that explains it\nraj: agreed"
+    assert [n for n, _ in parse_thread(content, known={"evan", "maya", "raj"})] == ["Evan", "Maya", "Raj"]
+
+
 def test_pick_threads_is_deterministic_and_respects_size():
     rows = [(f"d{i}", "incidents", "\n".join(f"a{j}: m" for j in range(n))) for i, n in enumerate([1, 3, 5, 20, 4, 2])]
     picked = pick_threads(rows, per_channel=2)
