@@ -48,6 +48,9 @@ app = [
     "redis>=5.2",
     "pypdf>=5.1",
     "python-docx>=1.1",
+    "slack_bolt>=1.21",
+    "slack_sdk>=3.33",
+    "aiohttp>=3.10",
 ]
 
 [project.scripts]
@@ -60,6 +63,7 @@ orgbrain-index-redwood = "orgbrain.index_redwood:main"
 orgbrain-worker = "orgbrain.worker:main"
 orgbrain-connect = "orgbrain.connectors.folder:main"
 orgbrain-people = "orgbrain.people:main"
+orgbrain-slack = "orgbrain.slack.bot:main"
 
 [dependency-groups]
 dev = [

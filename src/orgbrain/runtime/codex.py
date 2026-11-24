@@ -18,16 +18,17 @@ class CodexConfig:
     command: list[str] = field(default_factory=lambda: ["codex"])
     model: str = "gpt-6-luna"
     effort: str = "low"
-    mcp_url: str = "http://127.0.0.1:8765/mcp"
+    mcp_url: str | None = "http://127.0.0.1:8765/mcp"
     workdir: Path | None = None
 
 
 def build_argv(cfg: CodexConfig, session_id: str | None) -> list[str]:
     exe = shutil.which(cfg.command[0]) or cfg.command[0]
     argv = [exe, *cfg.command[1:], "exec", "--json", "--skip-git-repo-check", "-s", "read-only", "-m", cfg.model,
-            "-c", f'model_reasoning_effort="{cfg.effort}"',
-            "-c", f'mcp_servers.orgbrain.url="{cfg.mcp_url}"',
-            "-c", 'mcp_servers.orgbrain.default_tools_approval_mode="approve"']
+            "-c", f'model_reasoning_effort="{cfg.effort}"']
+    if cfg.mcp_url:
+        argv += ["-c", f'mcp_servers.orgbrain.url="{cfg.mcp_url}"',
+                 "-c", 'mcp_servers.orgbrain.default_tools_approval_mode="approve"']
     return argv + (["resume", session_id] if session_id else []) + ["-"]
 
 

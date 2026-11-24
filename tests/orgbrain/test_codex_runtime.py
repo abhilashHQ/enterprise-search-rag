@@ -63,3 +63,8 @@ def test_run_streams_events_and_returns_session(tmp_path):
 def test_resume_sends_only_the_message(tmp_path):
     _, rec = run_fake(tmp_path, "and in staging?", "thread-123")
     assert rec["stdin"] == "and in staging?" and rec["argv"][-3:] == ["resume", "thread-123", "-"]
+
+
+def test_build_argv_without_tools():
+    argv = build_argv(CodexConfig(command=["codex-not-on-path"], mcp_url=None), None)
+    assert not any("mcp_servers" in a for a in argv)
