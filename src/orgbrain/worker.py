@@ -17,7 +17,26 @@ from orgbrain.db import Outbox
 from orgbrain.index_writer import IndexWriter, NewDoc
 
 STREAM, GROUP = "orgbrain:ingest", "workers"
+DEAD, ATTEMPTS, MAX_ATTEMPTS = "orgbrain:ingest:dead", "orgbrain:ingest:attempts", 3
 log = logging.getLogger("orgbrain.worker")
+
+
+def is_transient(e: BaseException) -> bool:
+    """A dependency is unreachable or overloaded: retry later, never dead-letter."""
+    import sqlite3
+
+    import httpx
+    from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
+    from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
+
+    if isinstance(e, httpx.HTTPStatusError):
+        return e.response.status_code >= 500
+    if isinstance(e, UnexpectedResponse):
+        return e.status_code is None or e.status_code >= 500
+    if isinstance(e, sqlite3.OperationalError):
+        return "locked" in str(e) or "busy" in str(e)
+    return isinstance(e, (httpx.TransportError, ResponseHandlingException, RedisConnectionError, RedisTimeoutError,
+                          ConnectionError, TimeoutError))
 
 
 async def relay_once(sessions, redis: Redis, batch: int = 100) -> int:
@@ -45,19 +64,48 @@ def _apply(writer: IndexWriter, fields: dict) -> list[float] | None:
 
 
 async def consume_once(redis: Redis, writer, on_indexed=None, consumer: str = "worker-1", block_ms: int = 5000) -> int:
+    """Index pending entries first, then new ones, in stream order; returns how many were acked. A transient failure
+    is raised with the entry left pending and uncounted. Any other failure counts an attempt and stops the batch, so
+    later events for the same doc never overtake it; on the third attempt the entry moves to the dead-letter stream."""
     done = 0
     for start, block in (("0", None), (">", block_ms)):
         resp = await redis.xreadgroup(GROUP, consumer, {STREAM: start}, count=10, block=block)
         for _, entries in resp or []:
             for entry_id, fields in entries:
-                vec = await asyncio.to_thread(_apply, writer, fields)
-                if on_indexed:
-                    await on_indexed(fields["doc_id"], vec)
+                try:
+                    vec = await asyncio.to_thread(_apply, writer, fields)
+                    if on_indexed:
+                        await on_indexed(fields["doc_id"], vec)
+                except Exception as e:
+                    if is_transient(e):
+                        raise
+                    n = await redis.hincrby(ATTEMPTS, entry_id, 1)
+                    if n < MAX_ATTEMPTS:
+                        log.warning("entry %s (%s) failed, attempt %d of %d: %r", entry_id, fields.get("doc_id"), n,
+                                    MAX_ATTEMPTS, e)
+                        return done
+                    await redis.xadd(DEAD, {**fields, "entry_id": entry_id, "error": repr(e)[:2000]})
+                    log.error("entry %s (%s) dead-lettered to %s after %d attempts: %r", entry_id, fields.get("doc_id"),
+                              DEAD, n, e)
                 await redis.xack(STREAM, GROUP, entry_id)
+                await redis.hdel(ATTEMPTS, entry_id)
                 done += 1
         if done:
             return done
     return done
+
+
+async def forever(step, what: str, sleep=asyncio.sleep, first: float = 2.0, cap: float = 60.0) -> None:
+    """Run step() forever; after a failure, wait with exponential backoff, so the worker outlives any outage."""
+    wait = first
+    while True:
+        try:
+            await step()
+            wait = first
+        except Exception as e:
+            (log.warning if is_transient(e) else log.exception)("%s failed, retrying in %.0fs: %r", what, wait, e)
+            await sleep(wait)
+            wait = min(wait * 2, cap)
 
 
 async def run(settings, consumer: str) -> None:
@@ -84,15 +132,13 @@ async def run(settings, consumer: str) -> None:
     await ensure_group(redis)
 
     async def relay():
-        while True:
-            if not await relay_once(sessions, redis):
-                await asyncio.sleep(1)
+        if not await relay_once(sessions, redis):
+            await asyncio.sleep(1)
 
     async def consume():
-        while True:
-            await consume_once(redis, writer, on_indexed, consumer)
+        await consume_once(redis, writer, on_indexed, consumer)
 
-    await asyncio.gather(relay(), consume())
+    await asyncio.gather(forever(relay, "outbox relay"), forever(consume, "ingest"))
 
 
 def main() -> None:
