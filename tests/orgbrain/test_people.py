@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from orgbrain.db import Base, ConversationStore
-from orgbrain.people import PeopleStore, extract, parse_profile
+from orgbrain.people import PeopleStore, extract, is_mailbox, parse_profile
 
 ROWS = [
     ("g1", "gmail", "Escalation", "From: Alyssa Chen <alyssa.chen@cascadefg.com>\nTo: Markus Klein <markus.klein@redwoodinference.com>\n"
@@ -58,3 +58,32 @@ def test_extract_reads_comma_separated_attendees():
     people = extract(rows)
     assert sorted(people) == ["liam-ortiz", "priya-shah"] and people["priya-shah"].role_hints == ["SE"]
     assert people["priya-shah"].name == "Priya Shah"
+
+
+DEDUPE_ROWS = [
+    ("f9", "fireflies", "Kickoff", "Attendees: Markus Klein (Redwood CSM), Markus (Redwood CSM), Jordan (Redwood AE)\n"),
+    ("g7", "gmail", "Ping", "From: Markus Klein <markus_klein@redwoodinference.com>\nTo: Legal Ops <legal_ops@redwoodinference.com>\n"),
+    ("g8", "gmail", "Ping 2", "From: Markus Klein <markus.klein@redwoodinference.com>\nCc: Markus Klein <mk@redwoodinference.com>\n"
+                              "To: Finance Ops <finance@redwoodinference.com>\n"),
+    ("g9", "gmail", "Ping 3", "From: Markus Klein <mk@redwoodinference.com>\n"),
+]
+
+
+def test_one_person_per_display_name_whatever_the_address_or_row_order():
+    people = extract(DEDUPE_ROWS)
+    assert sorted(people) == ["markus.klein"]
+    mk = people["markus.klein"]
+    assert mk.email == "markus.klein@redwoodinference.com"
+    assert {"markus_klein@redwoodinference.com", "mk@redwoodinference.com"} <= mk.aliases
+    assert len(mk.docs) == 4 and mk.role_hints == ["CSM"]
+
+
+def test_shared_mailboxes_are_not_people():
+    assert all(is_mailbox(n) for n in ["Legal Ops", "Finance Ops", "Customer Success Team", "Redwood Demo", "Signup Bot",
+                                       "Accounts Payable", "Exec Leadership", "AM Redwood Security", "Deal Desk"])
+    assert not any(is_mailbox(n) for n in ["Markus Klein", "Grace O'Connor", "Dr. Aisha Rahman", "Omar El-Sayed"])
+
+
+def test_first_name_only_attendees_link_to_a_unique_full_name_or_are_dropped():
+    people = extract(DEDUPE_ROWS[:1])
+    assert sorted(people) == ["markus-klein"] and "markus" in people["markus-klein"].aliases

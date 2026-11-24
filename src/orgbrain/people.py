@@ -23,6 +23,9 @@ ADDR = re.compile(r"([A-Z][\w'.-]+(?: [A-Z][\w'.-]+)+) <([\w.+-]+)@" + re.escape
 ATTENDEES = re.compile(r"^Attendees:(.*)$", re.M)
 ATTENDEE = re.compile(r"\s*([^;,(]+?)\s*\(Redwood\s*([^)]*)\)")
 SPEAKER = re.compile(r"^([a-z][\w.-]*): ", re.M)
+MAILBOX = re.compile(r"\b(?:team|ops|operations|desk|deals|distro|bot|portal|trials|notices|onboarding|demo|support|sales|"
+                     r"sdrs|billing|finance|accounts|payable|procurement|legal|security|hr|product|success|leadership|"
+                     r"redwood|inference)\b", re.I)
 SAMPLES = 15
 MIN_DOCS = 2
 
@@ -37,6 +40,7 @@ class PersonDraft:
     sources: Counter = field(default_factory=Counter)
     sample_doc_ids: list = field(default_factory=list)
     docs: set = field(default_factory=set)
+    addresses: Counter = field(default_factory=Counter)
 
     def seen(self, doc_id: str, source: str) -> None:
         if doc_id in self.docs:
@@ -51,35 +55,66 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+def is_mailbox(display_name: str) -> bool:
+    """A shared mailbox, not a person: the display name holds a team or function word, or the company's name."""
+    return bool(MAILBOX.search(display_name))
+
+
+def _spells(local: str, name: str) -> bool:
+    return re.split(r"[._-]", local) == [re.sub(r"[^a-z0-9]", "", t) for t in name.lower().split()]
+
+
+def _canonical(p: PersonDraft) -> str:
+    """The address that spells the full name (first.last before first_last), else the most used one."""
+    return min(p.addresses, key=lambda a: (not _spells(a, p.name), "." not in a, -p.addresses[a], a))
+
+
+def _add_role(p: PersonDraft, role: str) -> None:
+    if role.strip() and role.strip() not in p.role_hints:
+        p.role_hints.append(role.strip())
+
+
 def extract(rows: Iterable[tuple[str, str, str, str]]) -> dict[str, PersonDraft]:
-    people: dict[str, PersonDraft] = {}
-    by_name: dict[str, str] = {}
-    slack: list[tuple[str, str]] = []
+    """Redwood people keyed by id. One person per full display name, whatever address or meeting they appear under.
+    Shared mailboxes are skipped; a first name alone (a Slack speaker, a one-word attendee) links to the one full-name
+    person with that first name, or is dropped."""
+    by_name: dict[str, PersonDraft] = {}
+    firsts_seen: list[tuple[str, str, str, str]] = []
     for doc_id, source, _title, content in rows:
         head = content[:2000]
         if source == "gmail":
             for name, local in ADDR.findall(head):
-                p = people.setdefault(local.lower(), PersonDraft(local.lower(), name, f"{local.lower()}@{DOMAIN}"))
-                by_name[name.lower()] = p.id
+                if is_mailbox(name):
+                    continue
+                p = by_name.setdefault(name.lower(), PersonDraft("", name))
+                p.addresses[local.lower()] += 1
                 p.seen(doc_id, source)
         elif source == "fireflies":
             for line in ATTENDEES.findall(head):
                 for name, role in ATTENDEE.findall(line):
-                    pid = by_name.get(name.lower()) or _slug(name)
-                    p = people.setdefault(pid, PersonDraft(pid, name))
-                    by_name[name.lower()] = pid
-                    if role.strip() and role.strip() not in p.role_hints:
-                        p.role_hints.append(role.strip())
-                    p.seen(doc_id, source)
+                    if len(name.split()) == 1:
+                        firsts_seen.append((doc_id, source, name.lower(), role))
+                    elif not is_mailbox(name):
+                        p = by_name.setdefault(name.lower(), PersonDraft("", name))
+                        _add_role(p, role)
+                        p.seen(doc_id, source)
         elif source == "slack":
-            slack += [(doc_id, n) for n in set(SPEAKER.findall(content))]
-    firsts = Counter(p.name.split()[0].lower() for p in people.values())
-    first_to_id = {p.name.split()[0].lower(): p.id for p in people.values() if firsts[p.name.split()[0].lower()] == 1}
-    for doc_id, first in slack:
-        if first in first_to_id:
-            p = people[first_to_id[first]]
+            firsts_seen += [(doc_id, source, n, "") for n in set(SPEAKER.findall(content))]
+    firsts = Counter(p.name.split()[0].lower() for p in by_name.values())
+    by_first = {p.name.split()[0].lower(): p for p in by_name.values() if firsts[p.name.split()[0].lower()] == 1}
+    for doc_id, source, first, role in firsts_seen:
+        if p := by_first.get(first):
             p.aliases.add(first)
-            p.seen(doc_id, "slack")
+            _add_role(p, role)
+            p.seen(doc_id, source)
+    people: dict[str, PersonDraft] = {}
+    for p in by_name.values():
+        local = _canonical(p) if p.addresses else None
+        if local in people:
+            local = None
+        p.id, p.email = (local, f"{local}@{DOMAIN}") if local else (_slug(p.name), None)
+        p.aliases |= {f"{a}@{DOMAIN}" for a in p.addresses if a != local}
+        people[p.id] = p
     return people
 
 
