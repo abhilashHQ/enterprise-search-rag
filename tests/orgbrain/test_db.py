@@ -37,3 +37,23 @@ async def test_missing_session_id_keeps_the_old_one():
     await store.save_turn("c2", "api", "s-1", "q", "a", [])
     await store.save_turn("c2", "api", None, "q2", "a2", [])
     assert await store.runtime_session("c2") == "s-1"
+
+
+from sqlalchemy import select
+
+from orgbrain.db import Memory, Outbox, enqueue
+
+
+@pytest.mark.anyio
+async def test_enqueue_commits_with_the_callers_row():
+    store = await make_store()
+    async with store.sessions.begin() as s:
+        m = Memory(text="Deploy freeze starts Dec 15", proposed_by="maria.lopez")
+        s.add(m)
+        await s.flush()
+        enqueue(s, "upsert", f"memory:{m.id}", {"source": "memory", "title": "t", "content": m.text})
+    async with store.sessions() as s:
+        row = (await s.execute(select(Outbox))).scalar_one()
+        mem = (await s.execute(select(Memory))).scalar_one()
+    assert (row.kind, row.doc_id, row.published_at) == ("upsert", f"memory:{mem.id}", None)
+    assert mem.status == "pending" and row.payload["content"] == "Deploy freeze starts Dec 15"

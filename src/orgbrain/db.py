@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Identity, Integer, String, Text, func, select
+from sqlalchemy import (JSON, Boolean, DateTime, ForeignKey, Identity, Integer, PrimaryKeyConstraint, String, Text, func,
+                        select)
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -27,6 +28,65 @@ class Message(Base):
     text: Mapped[str] = mapped_column(Text)
     citations: Mapped[list] = mapped_column(JSON, server_default=sql_text("'[]'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Outbox(Base):
+    __tablename__ = "outbox"
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    doc_id: Mapped[str] = mapped_column(String(512))
+    payload: Mapped[dict] = mapped_column(JSON, server_default=sql_text("'{}'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class Memory(Base):
+    __tablename__ = "memories"
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", index=True)
+    proposed_by: Mapped[str | None] = mapped_column(String(64))
+    conversation_id: Mapped[str | None] = mapped_column(String(32))
+    decided_by: Mapped[str | None] = mapped_column(String(64))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Person(Base):
+    __tablename__ = "people"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    email: Mapped[str | None] = mapped_column(String(256), unique=True)
+    aliases: Mapped[list] = mapped_column(JSON, default=list, server_default=sql_text("'[]'"))
+    role: Mapped[str | None] = mapped_column(String(128))
+    team: Mapped[str | None] = mapped_column(String(128))
+    topics: Mapped[list] = mapped_column(JSON, default=list, server_default=sql_text("'[]'"))
+    sources: Mapped[dict] = mapped_column(JSON, default=dict, server_default=sql_text("'{}'"))
+    doc_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    search_text: Mapped[str] = mapped_column(Text, default="", server_default="")
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sql_text("false"))
+
+
+class ConnectorSource(Base):
+    __tablename__ = "sources"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    config: Mapped[dict] = mapped_column(JSON, server_default=sql_text("'{}'"))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SourceFile(Base):
+    __tablename__ = "source_files"
+    __table_args__ = (PrimaryKeyConstraint("source_id", "rel_path"),)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"))
+    rel_path: Mapped[str] = mapped_column(String(1024))
+    doc_id: Mapped[str] = mapped_column(String(512))
+    sha256: Mapped[str] = mapped_column(String(64))
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+def enqueue(session, kind: str, doc_id: str, payload: dict | None = None) -> None:
+    session.add(Outbox(kind=kind, doc_id=doc_id, payload=payload or {}))
 
 
 class ConversationStore:
