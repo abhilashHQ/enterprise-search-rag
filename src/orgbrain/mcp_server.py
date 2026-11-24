@@ -1,4 +1,4 @@
-"""orgbrain search server: the search and read_doc tools over MCP streamable HTTP.
+"""orgbrain search server: the search, lookup and read_doc tools over MCP streamable HTTP.
 
   uv run --extra app orgbrain-search                       # http://127.0.0.1:8765/mcp
   uv run --extra app orgbrain-search --dense binary        # dense index in 197 MB of RAM
@@ -23,13 +23,13 @@ from entsearch.data import ROOT
 from orgbrain.config import Settings
 from orgbrain.search import LocalSearch, SearchBackend
 from orgbrain.sources import Source
-from orgbrain.tools import read_doc_tool, search_tool
+from orgbrain.tools import lookup_tool, read_doc_tool, search_tool
 
 log = logging.getLogger("orgbrain.search")
 
 INSTRUCTIONS = """Search a company's internal knowledge: documents from its apps (Slack, Gmail, Google Drive, Confluence, \
 Jira, Linear, GitHub, HubSpot, meeting transcripts), uploaded files, and facts the team asked to remember. Use `search` \
-to find documents and cite each result by its ref, and `read_doc` for a document's full text."""
+to find documents and cite each result by its ref, `lookup` for documents containing an exact phrase, and `read_doc` for a document's full text."""
 
 
 def structured(result: Any) -> dict:
@@ -50,22 +50,34 @@ def build_server(load: "Future[SearchBackend]") -> MCPServer:
             raise ToolError(f"search index failed to load: {e}") from e
 
     @server.tool(structured_output=True)
-    def search(query: str, sources: list[Source] | None = None, k: int = 10) -> dict[str, Any]:
-        """Search the company's documents. Returns the top k (1 to 20) results with ref, doc_id, source, title and
-        snippet. Pass sources only when the question clearly points at one kind of system; if filtered results look
-        unrelated, search again without the filter. Cite results as [ref]."""
+    def search(query: str, sources: list[Source] | None = None, k: int = 10, offset: int = 0) -> dict[str, Any]:
+        """Search the company's documents by meaning and keywords. Returns k (1 to 20) results with ref, doc_id,
+        source, title and snippet, starting at offset (page deeper with offset=10, 20, ... up to 100). Pass sources
+        only when the question clearly points at one kind of system; if filtered results look unrelated, search again
+        without the filter. Cite results as [ref]."""
         with lock:
             try:
-                return search_tool(backend(), query, [s.value for s in sources] if sources else None, k)
+                return search_tool(backend(), query, [s.value for s in sources] if sources else None, k, offset)
             except ValueError as e:
                 raise ToolError(str(e)) from e
 
     @server.tool(structured_output=True)
-    def read_doc(doc_id: str) -> dict[str, Any]:
-        """Full text of one document by doc_id, from a search result (long documents are truncated)."""
+    def lookup(phrase: str, sources: list[Source] | None = None, k: int = 10) -> dict[str, Any]:
+        """Documents whose title or text contains this exact phrase (case-insensitive): a ticket key, a metric or
+        config name, a customer, a person, a date as written. Use it for specifics that search ranks poorly, and to
+        check which documents mention a name. Snippets show the phrase in context. Cite results as [ref]."""
         try:
-            return read_doc_tool(backend(), doc_id)
-        except LookupError as e:
+            return lookup_tool(backend(), phrase, [s.value for s in sources] if sources else None, k)
+        except (ValueError, NotImplementedError) as e:
+            raise ToolError(str(e)) from e
+
+    @server.tool(structured_output=True)
+    def read_doc(doc_id: str, offset: int = 0) -> dict[str, Any]:
+        """Text of one document by doc_id, 12,000 characters at a time. If next_offset is set, the document goes on:
+        call again with offset=next_offset to read the rest."""
+        try:
+            return read_doc_tool(backend(), doc_id, offset)
+        except (LookupError, ValueError) as e:
             raise ToolError(str(e)) from e
 
     return server

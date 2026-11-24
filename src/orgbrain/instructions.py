@@ -10,6 +10,8 @@ def instructions(company: str = "Redwood Inference", path: Path | None = None) -
     if "{company}" not in text:
         raise ValueError(f"{path or CONSTITUTION} has no {{company}} placeholder")
     sources = "\n".join(f"- {s.value}: {h}" for s, h in SOURCE_HELP.items())
-    tools = ("\n\n## Your tools\n\n`search` can be limited to one or more of these sources when the question clearly "
-             f"points at them:\n\n{sources}\n")
+    tools = ("\n\n## Your tools\n\n`search` finds documents by meaning and keywords; page past the first results with "
+             "`offset`. `lookup` finds documents containing an exact phrase. `read_doc` reads a document 12,000 characters "
+             "at a time; follow `next_offset` to the end of a long one. `search` and `lookup` can be limited to one or "
+             f"more of these sources when the question clearly points at them:\n\n{sources}\n")
     return text.replace("{company}", company) + tools

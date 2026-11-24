@@ -3,7 +3,8 @@ import pytest
 from qdrant_client import QdrantClient, models
 
 from orgbrain.bm25 import doc_vector_from_text
-from orgbrain.qdrant_store import CHUNKS, DOCS, QdrantSearch, chunk_point_id, doc_point_id, ensure_collections
+from orgbrain.qdrant_store import (CHUNKS, DOCS, QdrantSearch, chunk_point_id, doc_point_id, ensure_collections,
+                                   snippet_around)
 from orgbrain.refs import ref
 from orgbrain.search import Doc
 
@@ -76,3 +77,58 @@ def test_read_doc(client):
 
 def test_no_matches_returns_empty(client):
     assert QdrantSearch(client, FakeModels()).search("zzzz", ["hubspot"], 5) == []
+
+
+def test_search_offset_pages_past_the_first_results(client):
+    s = QdrantSearch(client, FakeModels({"Billing ticket": 5.0, "eng-releases": 1.0}))
+    assert [h.doc_id for h in s.search("canary rollback billing", None, 1, offset=1)] == ["d2"]
+
+
+@pytest.fixture
+def phrases(tmp_path):
+    import sqlite3
+
+    from orgbrain.fts import PhraseIndex, build
+
+    store = tmp_path / "docstore.sqlite"
+    con = sqlite3.connect(store)
+    con.execute("CREATE TABLE docs (doc_id TEXT PRIMARY KEY, source_type TEXT, title TEXT, content TEXT)")
+    con.executemany("INSERT INTO docs VALUES (?, ?, ?, ?)", [(d, s, t, body) for d, s, t, body, _ in DOCS_ROWS])
+    con.commit()
+    con.close()
+    build(store, tmp_path / "fts.sqlite")
+    return PhraseIndex(tmp_path / "fts.sqlite", store)
+
+
+def test_lookup_matches_exact_phrase_in_content_or_title(client, phrases):
+    s = QdrantSearch(client, FakeModels(), phrases=phrases)
+    assert [h.doc_id for h in s.lookup("rollback happened", None, 5)] == ["d2"]
+    assert [h.doc_id for h in s.lookup("billing ticket", None, 5)] == ["d3"]
+    assert {h.doc_id for h in s.lookup("canary", None, 5)} == {"d1", "d2"}
+    assert s.lookup("happened rollback", None, 5) == []
+    assert s.lookup("billing ticket", None, 5)[0].snippet == "billing owner is grace"
+
+
+def test_lookup_respects_source_filter(client, phrases):
+    assert [h.doc_id for h in QdrantSearch(client, FakeModels(), phrases=phrases).lookup("canary", ["slack"], 5)] == ["d2"]
+
+
+def test_lookup_without_phrase_index_is_unavailable(client):
+    with pytest.raises(NotImplementedError):
+        QdrantSearch(client, FakeModels()).lookup("canary", None, 5)
+
+
+def test_snippet_centres_on_the_phrase():
+    text = "a" * 500 + "NEEDLE" + "b" * 500
+    snip = snippet_around(text, "needle", width=106)
+    assert "NEEDLE" in snip and len(snip) == 106 and snip.index("NEEDLE") == 50
+    assert snippet_around("short text", "absent", width=5) == "short"
+
+
+def test_best_passage_finds_the_window_with_the_query_terms():
+    from orgbrain.qdrant_store import best_passage
+
+    text = "Issue summary: generic opening. " * 20 + "On 2026-03-13 the us-east pool returned 502 errors. " + "filler " * 50
+    snip = best_passage(text, "what caused 502 errors in the us-east pool?", width=80)
+    assert "us-east pool returned 502 errors" in snip and "generic opening" not in snip
+    assert best_passage("nothing relevant", "zebra", width=7) == "nothing"

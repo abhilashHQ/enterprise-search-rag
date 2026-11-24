@@ -51,7 +51,8 @@ def parse_line(line: str) -> list[Event]:
         return [Done(None, ev.get("usage") or {})]
     if kind in ("turn.failed", "error"):
         err = ev.get("error") or {}
-        raise RuntimeError(f"codex turn failed: {err.get('message') if isinstance(err, dict) else err or ev}")
+        msg = (err.get("message") if isinstance(err, dict) else err) or ev.get("message") or ev
+        raise RuntimeError(f"codex turn failed: {msg}")
     return []
 
 

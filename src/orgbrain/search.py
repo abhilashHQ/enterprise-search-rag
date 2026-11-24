@@ -24,7 +24,9 @@ class Doc:
 
 
 class SearchBackend(Protocol):
-    def search(self, query: str, sources: list[str] | None, k: int) -> list[Hit]: ...
+    def search(self, query: str, sources: list[str] | None, k: int, offset: int = 0) -> list[Hit]: ...
+
+    def lookup(self, phrase: str, sources: list[str] | None, k: int) -> list[Hit]: ...
 
     def read_doc(self, doc_id: str) -> Doc | None: ...
 
@@ -42,13 +44,16 @@ class LocalSearch:
         return cls(Pipeline(Config(data_dir=data_dir, router=False, rerank=True, rerank_depth=20, dense=dense,
                                    device=device, verify=False)))
 
-    def search(self, query: str, sources: list[str] | None, k: int) -> list[Hit]:
-        res = self.pipeline.search(query, k=k, sources=sources)
+    def search(self, query: str, sources: list[str] | None, k: int, offset: int = 0) -> list[Hit]:
+        res = self.pipeline.search(query, k=offset + k, sources=sources)
         return [
             Hit(ref(h.doc_id), h.doc_id, h.source, h.title, h.snippet,
                 h.rerank_score if h.rerank_score is not None else h.fused_score)
-            for h in res.hits
+            for h in res.hits[offset:]
         ]
+
+    def lookup(self, phrase: str, sources: list[str] | None, k: int) -> list[Hit]:
+        raise NotImplementedError("exact phrase lookup needs the qdrant backend")
 
     def read_doc(self, doc_id: str) -> Doc | None:
         d = self.pipeline.get_document(doc_id)

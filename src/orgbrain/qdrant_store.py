@@ -1,19 +1,24 @@
 """Qdrant-backed search: BM25 over whole documents and dense MaxP over chunks, fused by doc, reranked.
 
   documents  one point per doc: sparse "bm25" (IDF modifier), payload doc_id, source, title, content (on disk)
+
+Exact phrase lookup goes to a PhraseIndex (SQLite FTS5, orgbrain.fts) when one is given.
   chunks     one point per 512-token chunk: dense "dense" (fp16 on disk, binary quantization in RAM), payload doc_id,
              source, chunk_idx
 """
 
+import re
 import uuid
 from typing import Protocol
 
 import numpy as np
 from qdrant_client import QdrantClient, models
 
+from entsearch.analysis import tokenize
 from entsearch.data import doc_text
 from entsearch.retrieval.rrf import rrf
 from orgbrain.bm25 import query_vector
+from orgbrain.fts import PhraseIndex
 from orgbrain.refs import ref
 from orgbrain.search import Doc, Hit
 
@@ -21,6 +26,36 @@ DOCS, CHUNKS = "documents", "chunks"
 DIM = 1024
 FUSE_DEPTH, RRF_K, RERANK_DEPTH, SNIPPET = 100, 60, 20, 300
 _NS = uuid.NAMESPACE_URL
+
+
+_STOP = frozenset("a an and are as at be by for from has have how in is it its of on or that the this to was were what "
+                  "when where which who why will with does did do".split())
+_WORD = re.compile(r"\w+")
+
+
+def best_passage(text: str, query: str, width: int = SNIPPET) -> str:
+    """The width-char window of text holding the most distinct query terms; the opening when none match."""
+    terms = {t for t in tokenize(query) if t not in _STOP and (len(t) > 2 or t.isdigit())}
+    hits = [(m.start(), m.group().lower()) for m in _WORD.finditer(text) if m.group().lower() in terms]
+    if not hits:
+        return text[:width]
+    best, best_start, j = 0, 0, 0
+    for i, (start, _) in enumerate(hits):
+        while hits[j][0] < start - width // 3:
+            j += 1
+        n = len({t for pos, t in hits[j:] if pos < hits[j][0] + width})
+        if n > best:
+            best, best_start = n, max(0, hits[j][0] - width // 8)
+    best_start = text.rfind(" ", 0, best_start) + 1 if best_start else 0
+    return text[best_start:best_start + width]
+
+
+def snippet_around(text: str, phrase: str, width: int = SNIPPET) -> str:
+    i = text.lower().find(phrase.lower())
+    if i < 0:
+        return text[:width]
+    start = max(0, i - (width - len(phrase)) // 2)
+    return text[start:start + width]
 
 
 def doc_point_id(doc_id: str) -> str:
@@ -57,8 +92,9 @@ class Models(Protocol):
 
 
 class QdrantSearch:
-    def __init__(self, client: QdrantClient, models_: Models, hnsw_ef: int = 1024, oversampling: float = 16.0):
-        self.client, self.models = client, models_
+    def __init__(self, client: QdrantClient, models_: Models, hnsw_ef: int = 1024, oversampling: float = 16.0,
+                 phrases: "PhraseIndex | None" = None):
+        self.client, self.models, self.phrases = client, models_, phrases
         self.params = models.SearchParams(
             hnsw_ef=hnsw_ef, quantization=models.QuantizationSearchParams(rescore=True, oversampling=oversampling))
 
@@ -66,7 +102,8 @@ class QdrantSearch:
     def connect(cls, settings) -> "QdrantSearch":
         from orgbrain.models_client import ModelsClient
 
-        return cls(QdrantClient(url=settings.qdrant_url, timeout=120), ModelsClient(settings.models_url))
+        phrases = PhraseIndex(settings.fts_path, settings.docstore_path) if settings.fts_path.exists() else None
+        return cls(QdrantClient(url=settings.qdrant_url, timeout=120), ModelsClient(settings.models_url), phrases=phrases)
 
     @staticmethod
     def _filter(sources: list[str] | None) -> models.Filter | None:
@@ -98,18 +135,25 @@ class QdrantSearch:
         lists = [l for l in (self._bm25(query, flt), self._dense(query, flt)) if l]
         return rrf(lists, k=RRF_K, top_n=FUSE_DEPTH) if lists else []
 
-    def search(self, query: str, sources: list[str] | None, k: int) -> list[Hit]:
+    def search(self, query: str, sources: list[str] | None, k: int, offset: int = 0) -> list[Hit]:
         fused = self.fuse(query, sources)
         if not fused:
             return []
         ids = [d for d, _ in fused]
-        docs = self._docs(ids[: max(k, RERANK_DEPTH)])
         head = ids[:RERANK_DEPTH]
+        docs = self._docs(ids[: max(offset + k, RERANK_DEPTH)])
         scores = np.asarray(self.models.rerank(query, [doc_text(docs[d]["title"], docs[d]["content"]) for d in head]))
         ranked = [head[i] for i in np.argsort(-scores, kind="stable")] + ids[RERANK_DEPTH:]
         score = {**dict(fused), **dict(zip(head, scores.tolist()))}
-        return [Hit(ref(d), d, docs[d]["source"], docs[d]["title"], docs[d]["content"][:SNIPPET], score[d])
-                for d in ranked[:k]]
+        return [Hit(ref(d), d, docs[d]["source"], docs[d]["title"], best_passage(docs[d]["content"], query), score[d])
+                for d in ranked[offset:offset + k]]
+
+    def lookup(self, phrase: str, sources: list[str] | None, k: int) -> list[Hit]:
+        """Documents whose title or text contains the exact phrase (case-insensitive), best BM25 match first."""
+        if self.phrases is None:
+            raise NotImplementedError("no phrase index configured (build one with python -m orgbrain.fts)")
+        return [Hit(ref(d), d, src, title, snippet_around(content, phrase), None)
+                for d, src, title, content in self.phrases.search(phrase, sources, k)]
 
     def read_doc(self, doc_id: str) -> Doc | None:
         pts = self.client.retrieve(DOCS, ids=[doc_point_id(doc_id)], with_payload=True)

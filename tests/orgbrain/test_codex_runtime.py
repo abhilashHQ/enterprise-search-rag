@@ -37,6 +37,8 @@ def test_parse_line_maps_codex_events():
 def test_parse_line_raises_on_failed_turn():
     with pytest.raises(RuntimeError, match="quota"):
         parse_line('{"type":"turn.failed","error":{"message":"quota exceeded"}}')
+    with pytest.raises(RuntimeError, match="usage limit"):
+        parse_line('{"type":"error","message":"You have hit your usage limit."}')
 
 
 def run_fake(tmp_path, message, session_id):
