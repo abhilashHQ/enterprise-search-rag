@@ -85,6 +85,12 @@ class SourceFile(Base):
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SlackEvent(Base):
+    __tablename__ = "slack_events"
+    event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 def enqueue(session, kind: str, doc_id: str, payload: dict | None = None) -> None:
     session.add(Outbox(kind=kind, doc_id=doc_id, payload=payload or {}))
 

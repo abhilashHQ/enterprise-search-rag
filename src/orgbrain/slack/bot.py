@@ -77,8 +77,15 @@ def build_app(settings, api, sessions=None, on_channel_message=None):
     app = AsyncApp(token=settings_token("ORGBRAIN_SLACK_BOT_TOKEN"))
     users = settings.slack_user_map()
 
+    async def fresh(event) -> bool:
+        from orgbrain.slack.sync import first_time
+
+        return sessions is None or await first_time(sessions, event.get("client_msg_id") or event["ts"] + event["channel"])
+
     @app.event("app_mention")
     async def on_mention(event, client):
+        if not await fresh(event):
+            return
         await answer_in_thread(client, api, event["channel"], event.get("thread_ts") or event["ts"],
                                strip_mention(event["text"]), users.get(event.get("user")))
 
@@ -86,10 +93,15 @@ def build_app(settings, api, sessions=None, on_channel_message=None):
     async def on_message(event, client, context):
         if event.get("bot_id") or event.get("subtype"):
             return
+        mentioned = f"<@{context['bot_user_id']}>" in event.get("text", "")
+        if event.get("channel_type") != "im" and (mentioned or on_channel_message is None):
+            return
+        if not await fresh(event):
+            return
         if event.get("channel_type") == "im":
             await answer_in_thread(client, api, event["channel"], event.get("thread_ts") or event["ts"],
                                    event["text"], users.get(event.get("user")))
-        elif on_channel_message and f"<@{context['bot_user_id']}>" not in event.get("text", ""):
+        else:
             await on_channel_message(event, client)
 
     async def decide(ack, body, client, action: str):
@@ -125,7 +137,12 @@ async def run(settings) -> None:
 
     from orgbrain.slack.api_client import OrgbrainApi
 
-    app = build_app(settings, OrgbrainApi(settings.api_url))
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from orgbrain.db import ConversationStore
+
+    sessions = ConversationStore(create_async_engine(settings.database_url)).sessions
+    app = build_app(settings, OrgbrainApi(settings.api_url), sessions)
     await AsyncSocketModeHandler(app, settings_token("ORGBRAIN_SLACK_APP_TOKEN")).start_async()
 
 
