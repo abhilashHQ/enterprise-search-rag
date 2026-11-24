@@ -66,3 +66,24 @@ def test_make_backend_rejects_unknown_name():
 
     with pytest.raises(ValueError, match="backend"):
         make_backend("opensearch", Path("."), "fp16", "cpu")
+
+
+class FakeMemories:
+    def __init__(self):
+        self.proposed = []
+
+    async def propose(self, text, proposed_by=None, conversation_id=None):
+        self.proposed.append((text, proposed_by))
+        return 7
+
+
+def test_propose_memory_writes_a_pending_proposal():
+    from orgbrain.memory import AppStores
+
+    f: Future = Future()
+    f.set_result(FakeBackend())
+    mem = FakeMemories()
+    srv = build_server(f, AppStores(mem))
+    out = structured(anyio.run(srv.call_tool, "propose_memory", {"fact": "Freeze starts Dec 15", "proposed_by": "sam"}))
+    assert out["id"] == 7 and out["status"] == "pending"
+    assert mem.proposed == [("Freeze starts Dec 15", "sam")]

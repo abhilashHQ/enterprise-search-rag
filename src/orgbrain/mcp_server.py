@@ -40,7 +40,7 @@ def structured(result: Any) -> dict:
     return out
 
 
-def build_server(load: "Future[SearchBackend]") -> MCPServer:
+def build_server(load: "Future[SearchBackend]", app=None) -> MCPServer:
     server = MCPServer("orgbrain", instructions=INSTRUCTIONS)
     lock = threading.Lock()
 
@@ -80,6 +80,16 @@ def build_server(load: "Future[SearchBackend]") -> MCPServer:
             return read_doc_tool(backend(), doc_id, offset)
         except (LookupError, ValueError) as e:
             raise ToolError(str(e)) from e
+
+    if app is not None:
+        @server.tool(structured_output=True)
+        async def propose_memory(fact: str, proposed_by: str | None = None) -> dict[str, Any]:
+            """Propose a fact, decision or convention the company should keep knowing. An admin reviews it before it
+            becomes searchable as source `memory`. Pass proposed_by as the teammate's id when you know it."""
+            if not fact.strip():
+                raise ToolError("fact is empty")
+            mid = await app.memories.propose(fact, proposed_by)
+            return {"id": mid, "status": "pending", "note": "An admin reviews it on the Memory page before it is searchable."}
 
     return server
 
@@ -125,7 +135,13 @@ def main() -> None:
     p.add_argument("--port", type=int, default=8765)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
-    build_server(start_loading(a.backend, a.data_dir, a.dense, a.device)).run("streamable-http", host=a.host, port=a.port)
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from orgbrain.memory import AppStores, MemoryStore
+
+    sessions = async_sessionmaker(create_async_engine(Settings.from_env().database_url), expire_on_commit=False)
+    app = AppStores(MemoryStore(sessions))
+    build_server(start_loading(a.backend, a.data_dir, a.dense, a.device), app).run("streamable-http", host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

@@ -25,21 +25,42 @@ from orgbrain.answer import collect_hits, finalize
 from orgbrain.config import Settings
 from orgbrain.db import ConversationStore
 from orgbrain.instructions import instructions
+from orgbrain.memory import MemoryStore
 from orgbrain.runtime.events import Done, Message, ToolCall, ToolResult
 
 
 class AskRequest(BaseModel):
     message: str
     conversation_id: str | None = None
+    user_id: str | None = None
 
 
-def create_app(runtime, store: ConversationStore) -> FastAPI:
+class DecideRequest(BaseModel):
+    user_id: str
+
+
+def create_app(runtime, store: ConversationStore, memories=None, people=None, cache=None, embed=None) -> FastAPI:
     app = FastAPI(title="orgbrain")
     busy = asyncio.Lock()
 
     @app.get("/api/health")
     async def health():
         return {"status": "ok", "runtime": runtime.name}
+
+    @app.get("/api/memories")
+    async def list_memories(status: str | None = None):
+        return await memories.list(status)
+
+    @app.post("/api/memories/{memory_id}/{action}")
+    async def decide(memory_id: int, action: str, req: DecideRequest):
+        try:
+            return await memories.decide(memory_id, action, req.user_id)
+        except PermissionError as e:
+            return JSONResponse({"error": str(e)}, status_code=403)
+        except LookupError as e:
+            return JSONResponse({"error": str(e)}, status_code=404)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
 
     @app.post("/api/ask")
     async def ask(req: AskRequest):
@@ -52,7 +73,10 @@ def create_app(runtime, store: ConversationStore) -> FastAPI:
                 start, results, text = time.perf_counter(), [], ""
                 try:
                     prior = await store.runtime_session(cid)
-                    async for ev in runtime.run(req.message, prior):
+                    message = req.message
+                    if req.user_id and people is not None and (person := await people.get(req.user_id)):
+                        message = f"(Teammate: {person['name']}, id {req.user_id})\n\n{message}"
+                    async for ev in runtime.run(message, prior):
                         if isinstance(ev, ToolCall):
                             yield {"event": "step", "data": json.dumps({"kind": "tool_call", "tool": ev.tool, "arguments": ev.arguments})}
                         elif isinstance(ev, ToolResult):
@@ -104,7 +128,7 @@ def main() -> None:
         client = AsyncOpenAI(base_url=a.base_url, api_key=os.environ[a.api_key_env])
         runtime = ApiRuntime(client, a.model, McpToolCaller(a.mcp_url), rules)
     store = ConversationStore(create_async_engine(Settings.from_env().database_url))
-    uvicorn.run(create_app(runtime, store), host=a.host, port=a.port)
+    uvicorn.run(create_app(runtime, store, memories=MemoryStore(store.sessions)), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

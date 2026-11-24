@@ -100,3 +100,23 @@ async def test_turn_is_saved_with_citations():
     _, events = await ask(app, {"message": "rollback?"})
     msgs = await store.messages(events[3][1]["conversation_id"])
     assert [m["role"] for m in msgs] == ["user", "assistant"] and msgs[1]["citations"][0]["ref"] == "a1b2c3"
+
+
+class FakeMemories:
+    async def list(self, status=None):
+        return [{"id": 1, "status": status or "pending"}]
+
+    async def decide(self, mid, action, user_id):
+        if user_id != "maria":
+            raise PermissionError("not admin")
+        return {"id": mid, "status": "approved"}
+
+
+@pytest.mark.anyio
+async def test_memory_endpoints_enforce_admin():
+    _, store = await app_for(FakeRuntime())
+    app = create_app(FakeRuntime(), store, memories=FakeMemories())
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+        assert (await c.get("/api/memories?status=pending")).json() == [{"id": 1, "status": "pending"}]
+        assert (await c.post("/api/memories/1/approve", json={"user_id": "sam"})).status_code == 403
+        assert (await c.post("/api/memories/1/approve", json={"user_id": "maria"})).json()["status"] == "approved"
