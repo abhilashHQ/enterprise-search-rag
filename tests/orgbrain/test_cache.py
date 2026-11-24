@@ -25,3 +25,8 @@ async def test_hit_only_above_threshold_and_invalidation_by_similarity():
     assert await cache.get(unit(1, 0.6, 0)) is None
     assert await cache.invalidate(unit(0.9, 0.1, 0.3)) == 1
     assert await cache.get(unit(1, 0, 0)) is None and (await cache.get(unit(0, 1, 0)))["text"] == "Grace"
+
+
+def test_default_thresholds():
+    cache = SemanticCache(fakeredis.aioredis.FakeRedis())
+    assert (cache.threshold, cache.invalidate_at) == (0.98, 0.5)

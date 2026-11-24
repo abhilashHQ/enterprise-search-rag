@@ -10,7 +10,7 @@ VECS, ANSWERS = "orgbrain:cache:vec", "orgbrain:cache:ans"
 
 
 class SemanticCache:
-    def __init__(self, redis, threshold: float = 0.95, invalidate_at: float = 0.5, max_entries: int = 5000):
+    def __init__(self, redis, threshold: float = 0.98, invalidate_at: float = 0.5, max_entries: int = 5000):
         self.redis, self.threshold, self.invalidate_at, self.max_entries = redis, threshold, invalidate_at, max_entries
 
     async def _scores(self, vec) -> tuple[list[bytes], np.ndarray]:
