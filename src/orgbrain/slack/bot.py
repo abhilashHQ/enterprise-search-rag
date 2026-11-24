@@ -147,9 +147,11 @@ def sessions_for(settings):
 
 
 def web_client():
+    from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetryHandler
     from slack_sdk.web.async_client import AsyncWebClient
 
-    return AsyncWebClient(token=settings_token("ORGBRAIN_SLACK_BOT_TOKEN"))
+    return AsyncWebClient(token=settings_token("ORGBRAIN_SLACK_BOT_TOKEN"),
+                          retry_handlers=[AsyncRateLimitErrorRetryHandler(max_retry_count=5)])
 
 
 async def run(settings) -> None:
@@ -226,6 +228,8 @@ def main() -> None:
     sp = sub.add_parser("seed")
     sp.add_argument("--dry-run", action="store_true")
     sp.add_argument("--per-channel", type=int, default=30)
+    up = sub.add_parser("unseed", help="delete the seeded posts in the seed channels")
+    up.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
     settings = Settings.from_env()
@@ -240,6 +244,10 @@ def main() -> None:
         client = None if a.dry_run else web_client()
         print(json.dumps(asyncio.run(seed(client, settings.docstore_path, ROOT / "data/orgbrain/slack_seed.json",
                                           a.per_channel, a.dry_run)), indent=2))
+    elif a.cmd == "unseed":
+        from orgbrain.slack.seed import unseed
+
+        print(json.dumps(asyncio.run(unseed(web_client(), a.dry_run)), indent=2))
 
 
 if __name__ == "__main__":
