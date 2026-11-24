@@ -30,3 +30,15 @@ async def test_hit_only_above_threshold_and_invalidation_by_similarity():
 def test_default_thresholds():
     cache = SemanticCache(fakeredis.aioredis.FakeRedis())
     assert (cache.threshold, cache.invalidate_at) == (0.98, 0.5)
+
+
+@pytest.mark.anyio
+async def test_put_replaces_the_answer_it_would_shadow():
+    redis = fakeredis.aioredis.FakeRedis()
+    cache = SemanticCache(redis, threshold=0.95)
+    await cache.put("rollback?", unit(1, 0, 0), {"text": "stale", "citations": []})
+    await cache.put("who owns billing?", unit(0, 1, 0), {"text": "Grace", "citations": []})
+    for _ in range(3):
+        await cache.put("rollback, again?", unit(1, 0.1, 0), {"text": "fresh", "citations": []})
+        assert (await cache.get(unit(1, 0, 0)))["text"] == "fresh"
+    assert await redis.hlen("orgbrain:cache:vec") == 2 and await redis.hlen("orgbrain:cache:ans") == 2

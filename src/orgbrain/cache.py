@@ -28,7 +28,16 @@ class SemanticCache:
         hit = await self.redis.hget(ANSWERS, keys[int(scores.argmax())])
         return json.loads(hit) if hit else None
 
+    async def _drop_at_or_above(self, vec, cutoff: float) -> int:
+        keys, scores = await self._scores(vec)
+        drop = [k for k, s in zip(keys, scores) if s >= cutoff]
+        if drop:
+            await self.redis.hdel(VECS, *drop)
+            await self.redis.hdel(ANSWERS, *drop)
+        return len(drop)
+
     async def put(self, question: str, qvec, answer: dict) -> None:
+        await self._drop_at_or_above(qvec, self.threshold)
         if await self.redis.hlen(VECS) >= self.max_entries:
             return
         key = uuid.uuid4().hex
@@ -36,9 +45,4 @@ class SemanticCache:
         await self.redis.hset(ANSWERS, key, json.dumps({**answer, "question": question}))
 
     async def invalidate(self, dvec) -> int:
-        keys, scores = await self._scores(dvec)
-        drop = [k for k, s in zip(keys, scores) if s >= self.invalidate_at]
-        if drop:
-            await self.redis.hdel(VECS, *drop)
-            await self.redis.hdel(ANSWERS, *drop)
-        return len(drop)
+        return await self._drop_at_or_above(dvec, self.invalidate_at)
