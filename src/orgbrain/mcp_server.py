@@ -30,7 +30,8 @@ log = logging.getLogger("orgbrain.search")
 
 INSTRUCTIONS = """Search a company's internal knowledge: documents from its apps (Slack, Gmail, Google Drive, Confluence, \
 Jira, Linear, GitHub, HubSpot, meeting transcripts), uploaded files, and facts the team asked to remember. Use `search` \
-to find documents and cite each result by its ref, `lookup` for documents containing an exact phrase, and `read_doc` for a document's full text."""
+to find documents and cite each result by its ref, `lookup` for documents containing an exact phrase, and `read_doc` for a document's full text. \
+Use `find_people` to find colleagues by name, role, team or topic, and `propose_memory` to propose a fact for an admin to approve."""
 
 
 def structured(result: Any) -> dict:

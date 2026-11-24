@@ -41,6 +41,11 @@ def test_custom_constitution_must_name_the_company(tmp_path):
         instructions("Acme", bad)
 
 
+def test_instructions_name_the_people_and_memory_tools():
+    text = instructions("Redwood Inference")
+    assert "`find_people`" in text and "`propose_memory`" in text
+
+
 def test_collect_hits_skips_results_that_are_not_documents():
     people = {"query": "renewals", "results": [{"id": "markus.klein", "name": "Markus Klein"}]}
     docs = {"results": [{"ref": "a1b2c3", "doc_id": "d1", "source": "jira", "title": "T"}]}
