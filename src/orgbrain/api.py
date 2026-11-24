@@ -87,8 +87,9 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                     if prior is None and req.conversation_id and (msgs := await store.messages(cid)):
                         earlier = "\n".join(f"{m['role']}: {m['text']}" for m in msgs)
                         message = f"Earlier in this conversation:\n{earlier}\n\n{message}"
-                    if req.user_id and people is not None and (person := await people.get(req.user_id)):
-                        message = f"(Teammate: {person['name']}, id {req.user_id})\n\n{message}"
+                    person = await people.get(req.user_id) if req.user_id and people is not None else None
+                    who = f"Teammate: {person['name']}, id {req.user_id}; " if person else ""
+                    message = f"({who}conversation {cid})\n\n{message}"
                     async for ev in runtime.run(message, prior):
                         if isinstance(ev, ToolCall):
                             yield {"event": "step", "data": json.dumps({"kind": "tool_call", "tool": ev.tool, "arguments": ev.arguments})}

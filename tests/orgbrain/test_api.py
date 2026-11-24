@@ -163,5 +163,23 @@ async def test_follow_up_to_a_cached_answer_carries_the_earlier_turn():
     _, events = await ask(app, {"message": "rollback?"})
     await ask(app, {"message": "and staging?", "conversation_id": events[0][1]["conversation_id"]})
     assert rt.sessions == [None, None]
-    assert rt.messages[-1] == ("Earlier in this conversation:\nuser: rollback?\nassistant: Pin the previous tag [a1b2c3]."
-                               "\n\nand staging?")
+    cid = events[0][1]["conversation_id"]
+    assert rt.messages[-1] == (f"(conversation {cid})\n\nEarlier in this conversation:\nuser: rollback?\n"
+                               "assistant: Pin the previous tag [a1b2c3].\n\nand staging?")
+
+
+class FakePeople:
+    async def get(self, pid):
+        return {"id": pid, "name": "Maria Lopez"} if pid == "maria" else None
+
+
+@pytest.mark.anyio
+async def test_the_runtime_message_carries_the_teammate_and_conversation_ids():
+    rt = RecordingRuntime()
+    _, store = await app_for(rt)
+    app = create_app(rt, store, people=FakePeople())
+    _, events = await ask(app, {"message": "remember X", "user_id": "maria"})
+    cid = events[-2][1]["conversation_id"]
+    assert rt.messages[-1] == f"(Teammate: Maria Lopez, id maria; conversation {cid})\n\nremember X"
+    await ask(app, {"message": "q", "user_id": "nobody", "conversation_id": cid})
+    assert rt.messages[-1] == f"(conversation {cid})\n\nq"

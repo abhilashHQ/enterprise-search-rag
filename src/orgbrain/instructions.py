@@ -15,6 +15,7 @@ def instructions(company: str = "Redwood Inference", path: Path | None = None) -
              "at a time; follow `next_offset` to the end of a long one. `search` and `lookup` can be limited to one or "
              f"more of these sources when the question clearly points at them:\n\n{sources}\n\n"
              "`find_people` finds colleagues by name, role, team or topic; roles and topics are inferred from the record. "
-             "`propose_memory` proposes a fact for an admin to approve; pass the teammate's id from the `(Teammate: ...)` "
-             "line as `proposed_by`.\n")
+             "`propose_memory` proposes a fact for an admin to approve. Each message starts with a line like "
+             "`(Teammate: Name, id ...; conversation ...)`: pass that id as `proposed_by` and the conversation id as "
+             "`conversation_id`.\n")
     return text.replace("{company}", company) + tools

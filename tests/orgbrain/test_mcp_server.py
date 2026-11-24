@@ -73,7 +73,7 @@ class FakeMemories:
         self.proposed = []
 
     async def propose(self, text, proposed_by=None, conversation_id=None):
-        self.proposed.append((text, proposed_by))
+        self.proposed.append((text, proposed_by, conversation_id))
         return 7
 
 
@@ -84,9 +84,10 @@ def test_propose_memory_writes_a_pending_proposal():
     f.set_result(FakeBackend())
     mem = FakeMemories()
     srv = build_server(f, AppStores(mem))
-    out = structured(anyio.run(srv.call_tool, "propose_memory", {"fact": "Freeze starts Dec 15", "proposed_by": "sam"}))
+    out = structured(anyio.run(srv.call_tool, "propose_memory", {"fact": "Freeze starts Dec 15", "proposed_by": "sam",
+                                                                  "conversation_id": "c" * 32}))
     assert out["id"] == 7 and out["status"] == "pending"
-    assert mem.proposed == [("Freeze starts Dec 15", "sam")]
+    assert mem.proposed == [("Freeze starts Dec 15", "sam", "c" * 32)]
 
 
 class FakePeople:

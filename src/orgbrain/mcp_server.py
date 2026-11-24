@@ -84,12 +84,16 @@ def build_server(load: "Future[SearchBackend]", app=None) -> MCPServer:
 
     if app is not None:
         @server.tool(structured_output=True)
-        async def propose_memory(fact: str, proposed_by: str | None = None) -> dict[str, Any]:
+        async def propose_memory(fact: str, proposed_by: str | None = None,
+                                 conversation_id: str | None = None) -> dict[str, Any]:
             """Propose a fact, decision or convention the company should keep knowing. An admin reviews it before it
-            becomes searchable as source `memory`. Pass proposed_by as the teammate's id when you know it."""
+            becomes searchable as source `memory`. Pass proposed_by as the teammate's id and conversation_id as the
+            conversation id, both from the (Teammate: ...; conversation ...) line, when you have them."""
             if not fact.strip():
                 raise ToolError("fact is empty")
-            mid = await app.memories.propose(fact, proposed_by)
+            if conversation_id and len(conversation_id) > 32:
+                raise ToolError("conversation_id is the 32-character id from the conversation line")
+            mid = await app.memories.propose(fact, proposed_by, conversation_id)
             return {"id": mid, "status": "pending", "note": "An admin reviews it on the Memory page before it is searchable."}
 
         @server.tool(structured_output=True)
