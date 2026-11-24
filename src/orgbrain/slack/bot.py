@@ -7,6 +7,7 @@
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import re
@@ -222,6 +223,9 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("run")
     sub.add_parser("backfill")
+    sp = sub.add_parser("seed")
+    sp.add_argument("--dry-run", action="store_true")
+    sp.add_argument("--per-channel", type=int, default=30)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
     settings = Settings.from_env()
@@ -229,6 +233,13 @@ def main() -> None:
         asyncio.run(run(settings))
     elif a.cmd == "backfill":
         print(asyncio.run(backfill(web_client(), sessions_for(settings))), "human messages indexed")
+    elif a.cmd == "seed":
+        from entsearch.data import ROOT
+        from orgbrain.slack.seed import seed
+
+        client = None if a.dry_run else web_client()
+        print(json.dumps(asyncio.run(seed(client, settings.docstore_path, ROOT / "data/orgbrain/slack_seed.json",
+                                          a.per_channel, a.dry_run)), indent=2))
 
 
 if __name__ == "__main__":
