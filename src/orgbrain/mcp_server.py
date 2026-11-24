@@ -24,6 +24,7 @@ from orgbrain.config import Settings
 from orgbrain.search import LocalSearch, SearchBackend
 from orgbrain.sources import Source
 from orgbrain.tools import lookup_tool, read_doc_tool, search_tool
+from orgbrain.waiting import wait_for
 
 log = logging.getLogger("orgbrain.search")
 
@@ -90,7 +91,8 @@ def make_backend(name: str, data_dir: Path, dense: str, device: str) -> SearchBa
         from orgbrain.qdrant_store import CHUNKS, DOCS, QdrantSearch
 
         backend = QdrantSearch.connect(Settings.from_env())
-        log.info("model service: %s", backend.models.health())
+        wait_for(backend.client.get_collections, "qdrant")
+        log.info("model service: %s", wait_for(backend.models.health, "model service"))
         for c in (DOCS, CHUNKS):
             log.info("%s: %s points", c, backend.client.count(c).count)
         return backend
