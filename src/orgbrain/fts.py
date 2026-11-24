@@ -9,6 +9,7 @@ Qdrant on a laptop (a Qdrant phrase index over the full texts needed more than 7
 import argparse
 import sqlite3
 import time
+from itertools import zip_longest
 from pathlib import Path
 
 from entsearch.data import ROOT
@@ -41,7 +42,9 @@ def ensure_live(path: Path) -> None:
 
 
 class PhraseIndex:
-    """Phrase lookup over the Redwood index and, when given, the live store; results merged by BM25 score."""
+    """Phrase lookup over the Redwood index and, when given, the live store. Each index ranks its own matches by BM25;
+    the two lists are interleaved by rank, live first, since FTS5 scores from separate indexes are not comparable (IDF
+    is per index)."""
 
     def __init__(self, fts: Path, docstore: Path, live: Path | None = None):
         self.con = sqlite3.connect(f"file:{fts.as_posix()}?mode=ro", uri=True, check_same_thread=False)
@@ -51,7 +54,7 @@ class PhraseIndex:
 
     @staticmethod
     def _query(con: sqlite3.Connection, docs: str, match: str, sources: list[str] | None, k: int) -> list[tuple]:
-        sql = (f"SELECT d.doc_id, d.source_type, d.title, d.content, bm25(fts) FROM fts JOIN {docs} d "
+        sql = (f"SELECT d.doc_id, d.source_type, d.title, d.content FROM fts JOIN {docs} d "
                "ON d.rowid = fts.rowid WHERE fts MATCH ?")
         args: list = [match]
         if sources:
@@ -64,8 +67,9 @@ class PhraseIndex:
         match = '"' + phrase.replace('"', '""') + '"'
         rows = self._query(self.con, "store.docs", match, sources, k)
         if self.live is not None:
-            rows = sorted(rows + self._query(self.live, "docs", match, sources, k), key=lambda r: r[4])
-        return [r[:4] for r in rows[:k]]
+            pairs = zip_longest(self._query(self.live, "docs", match, sources, k), rows)
+            rows = [r for pair in pairs for r in pair if r is not None]
+        return rows[:k]
 
 
 if __name__ == "__main__":

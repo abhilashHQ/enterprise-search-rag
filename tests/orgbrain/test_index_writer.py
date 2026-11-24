@@ -49,6 +49,7 @@ def test_upsert_makes_a_doc_searchable_everywhere_and_delete_removes_it(stores):
     assert [h.doc_id for h in search.lookup("December 15", None, 5)] == ["file:notes:freeze.md"]
     assert {h.doc_id for h in search.lookup("deploy freeze", None, 5)} == {"rw1", "file:notes:freeze.md"}
     assert [h.doc_id for h in search.lookup("deploy freeze", ["files"], 5)] == ["file:notes:freeze.md"]
+    assert [h.doc_id for h in search.lookup("deploy freeze", None, 1)] == ["file:notes:freeze.md"]
     assert search.read_doc("file:notes:freeze.md").content.startswith("The deploy freeze")
 
     w.upsert(NewDoc("file:notes:freeze.md", "files", "freeze.md", "The deploy freeze moved to January 5."))
