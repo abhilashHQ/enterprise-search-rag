@@ -50,6 +50,13 @@ def test_fences_opened_or_closed_mid_line_are_tracked():
     assert [n for n, _ in parse_thread(content)] == ["Ashley", "Ajay"]
 
 
+def test_dotted_usernames_are_speakers_but_config_keys_are_not():
+    content = "deploybot: eval failed\nmike.dev: ugh. sample?\nsara.prod: diffs below\npayment.timeout_ms: 12000"
+    assert parse_thread(content, known={"mike.dev"}) == [
+        ("Deploybot", "eval failed"), ("mike.dev", "ugh. sample?\nsara.prod: diffs below\npayment.timeout_ms: 12000")]
+    assert [n for n, _ in parse_thread(content, known={"mike.dev", "sara.prod"})] == ["Deploybot", "mike.dev", "sara.prod"]
+
+
 def test_an_unclosed_fence_does_not_swallow_later_speakers():
     content = "evan: trace below\n```\nOOM at step 4\nmaya: that explains it\nraj: agreed"
     assert [n for n, _ in parse_thread(content, known={"evan", "maya", "raj"})] == ["Evan", "Maya", "Raj"]

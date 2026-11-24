@@ -8,7 +8,7 @@ from pathlib import Path
 
 CHANNELS = ["incidents", "eng-runtime", "eng-releases", "eng-platform", "support", "customer-success"]
 ICONS = ["bear", "fox_face", "owl", "penguin", "tiger", "koala", "frog", "octopus", "wolf", "panda_face", "rabbit", "whale"]
-SPEAKER = re.compile(r"^(?P<name>[A-Za-z][\w'-]*(?:[ .][A-Z][\w'-]*\.?)?)(?: \((?P<team>[^()]{1,40})\))?: (?P<text>.*)$")
+SPEAKER = re.compile(r"^(?P<name>[a-z][\w'-]*(?:\.[a-z0-9_-]+)+|[A-Za-z][\w'-]*(?:[ .][A-Z][\w'-]*\.?)?)(?: \((?P<team>[^()]{1,40})\))?: (?P<text>.*)$")
 
 
 def _h(s: str) -> int:
