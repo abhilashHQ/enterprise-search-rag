@@ -87,3 +87,18 @@ def test_propose_memory_writes_a_pending_proposal():
     out = structured(anyio.run(srv.call_tool, "propose_memory", {"fact": "Freeze starts Dec 15", "proposed_by": "sam"}))
     assert out["id"] == 7 and out["status"] == "pending"
     assert mem.proposed == [("Freeze starts Dec 15", "sam")]
+
+
+class FakePeople:
+    async def find(self, query, k=10):
+        return [{"id": "markus.klein", "name": "Markus Klein", "role": "CSM"}][:k]
+
+
+def test_find_people_returns_matches():
+    from orgbrain.memory import AppStores
+
+    f: Future = Future()
+    f.set_result(FakeBackend())
+    srv = build_server(f, AppStores(FakeMemories(), FakePeople()))
+    out = structured(anyio.run(srv.call_tool, "find_people", {"query": "renewals", "k": 50}))
+    assert out["query"] == "renewals" and [p["id"] for p in out["results"]] == ["markus.klein"]

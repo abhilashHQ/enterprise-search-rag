@@ -26,6 +26,7 @@ from orgbrain.config import Settings
 from orgbrain.db import ConversationStore
 from orgbrain.instructions import instructions
 from orgbrain.memory import MemoryStore
+from orgbrain.people import PeopleStore
 from orgbrain.runtime.events import Done, Message, ToolCall, ToolResult
 
 
@@ -128,7 +129,8 @@ def main() -> None:
         client = AsyncOpenAI(base_url=a.base_url, api_key=os.environ[a.api_key_env])
         runtime = ApiRuntime(client, a.model, McpToolCaller(a.mcp_url), rules)
     store = ConversationStore(create_async_engine(Settings.from_env().database_url))
-    uvicorn.run(create_app(runtime, store, memories=MemoryStore(store.sessions)), host=a.host, port=a.port)
+    uvicorn.run(create_app(runtime, store, memories=MemoryStore(store.sessions), people=PeopleStore(store.sessions)),
+                host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

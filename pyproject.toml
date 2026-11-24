@@ -59,6 +59,7 @@ orgbrain-models = "orgbrain.models_service:main"
 orgbrain-index-redwood = "orgbrain.index_redwood:main"
 orgbrain-worker = "orgbrain.worker:main"
 orgbrain-connect = "orgbrain.connectors.folder:main"
+orgbrain-people = "orgbrain.people:main"
 
 [dependency-groups]
 dev = [

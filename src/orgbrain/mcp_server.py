@@ -91,6 +91,15 @@ def build_server(load: "Future[SearchBackend]", app=None) -> MCPServer:
             mid = await app.memories.propose(fact, proposed_by)
             return {"id": mid, "status": "pending", "note": "An admin reviews it on the Memory page before it is searchable."}
 
+        @server.tool(structured_output=True)
+        async def find_people(query: str, k: int = 10) -> dict[str, Any]:
+            """Find colleagues by name, role, team or topic ("who handles renewals", "Maya", "SRE"). Returns name, email,
+            role, team, topics and where they show up. Roles and topics are inferred from the record, so say so when it
+            matters."""
+            if app.people is None:
+                raise ToolError("people directory is not configured")
+            return {"query": query, "results": await app.people.find(query, max(1, min(k, 20)))}
+
     return server
 
 
@@ -138,9 +147,10 @@ def main() -> None:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from orgbrain.memory import AppStores, MemoryStore
+    from orgbrain.people import PeopleStore
 
     sessions = async_sessionmaker(create_async_engine(Settings.from_env().database_url), expire_on_commit=False)
-    app = AppStores(MemoryStore(sessions))
+    app = AppStores(MemoryStore(sessions), PeopleStore(sessions))
     build_server(start_loading(a.backend, a.data_dir, a.dense, a.device), app).run("streamable-http", host=a.host, port=a.port)
 
 
