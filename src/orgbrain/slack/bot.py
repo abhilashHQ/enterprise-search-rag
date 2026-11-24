@@ -14,6 +14,7 @@ import sys
 import time
 
 from orgbrain.slack.render import conversation_id, footnotes, step_line, to_mrkdwn
+from orgbrain.slack.sync import Names, backfill, ensure_source, event_key, first_time, index_message
 
 MENTION = re.compile(r"^\s*<@[A-Z0-9]+>\s*")
 log = logging.getLogger("orgbrain.slack")
@@ -78,9 +79,7 @@ def build_app(settings, api, sessions=None, on_channel_message=None):
     users = settings.slack_user_map()
 
     async def fresh(event) -> bool:
-        from orgbrain.slack.sync import first_time
-
-        return sessions is None or await first_time(sessions, event.get("client_msg_id") or event["ts"] + event["channel"])
+        return sessions is None or await first_time(sessions, event_key(event, event["channel"]))
 
     @app.event("app_mention")
     async def on_mention(event, client):
@@ -132,18 +131,43 @@ def settings_token(name: str) -> str:
     return token
 
 
+def sessions_for(settings):
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from orgbrain.db import ConversationStore
+
+    return ConversationStore(create_async_engine(settings.database_url)).sessions
+
+
+def web_client():
+    from slack_sdk.web.async_client import AsyncWebClient
+
+    return AsyncWebClient(token=settings_token("ORGBRAIN_SLACK_BOT_TOKEN"))
+
+
 async def run(settings) -> None:
     from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
     from orgbrain.slack.api_client import OrgbrainApi
 
-    from sqlalchemy.ext.asyncio import create_async_engine
+    sessions, names, index_lock = sessions_for(settings), Names(), asyncio.Lock()
+    await ensure_source(sessions)
 
-    from orgbrain.db import ConversationStore
+    async def on_channel_message(event, client):
+        thread_ts = event.get("thread_ts") or event["ts"]
+        speaker = await names.user(client, event["user"])
+        channel_name = await names.channel(client, event["channel"])
+        async with index_lock:
+            await index_message(sessions, event["channel"], channel_name, thread_ts, speaker, event["text"])
+        log.info("indexed %s in #%s", thread_ts, channel_name)
 
-    sessions = ConversationStore(create_async_engine(settings.database_url)).sessions
-    app = build_app(settings, OrgbrainApi(settings.api_url), sessions)
-    await AsyncSocketModeHandler(app, settings_token("ORGBRAIN_SLACK_APP_TOKEN")).start_async()
+    app = build_app(settings, OrgbrainApi(settings.api_url), sessions, on_channel_message)
+    handler = AsyncSocketModeHandler(app, settings_token("ORGBRAIN_SLACK_APP_TOKEN"))
+    await handler.connect_async()
+    log.info("connected over Socket Mode")
+    async with index_lock:
+        log.info("backfill indexed %d human messages", await backfill(app.client, sessions, names))
+    await asyncio.Event().wait()
 
 
 def main() -> None:
@@ -152,11 +176,14 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="orgbrain-slack", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("run")
+    sub.add_parser("backfill")
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
     settings = Settings.from_env()
     if a.cmd == "run":
         asyncio.run(run(settings))
+    elif a.cmd == "backfill":
+        print(asyncio.run(backfill(web_client(), sessions_for(settings))), "human messages indexed")
 
 
 if __name__ == "__main__":
