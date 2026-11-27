@@ -26,6 +26,13 @@ export function splitRefs(text: string): Segment[] {
   return out
 }
 
+/** The answer as markdown with each cited ref turned into a `[n](#cite-ref)` link the renderer draws as a chip. */
+export function linkRefs(text: string, numbers: Map<string, number>): string {
+  return splitRefs(text)
+    .map((s) => (s.kind === "text" ? s.text : s.refs.map((r) => `[${numbers.get(r) ?? "?"}](#cite-${r})`).join("")))
+    .join("")
+}
+
 /** 1-based numbers in first-cited order. Refs cited in the text come first, then any remaining citations. */
 export function numberCitations(text: string, citations: Citation[]): Map<string, number> {
   const order = new Map<string, number>()

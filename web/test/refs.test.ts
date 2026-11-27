@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { numberCitations, splitRefs } from "@/lib/refs"
+import { linkRefs, numberCitations, splitRefs } from "@/lib/refs"
 
 const cite = (ref: string) => ({ ref, doc_id: `d-${ref}`, source: "slack", title: ref })
 
@@ -25,6 +25,13 @@ describe("splitRefs", () => {
 
   it("accepts semicolons like the python side", () => {
     expect(splitRefs("[a1b2c3; d4e5f6]")).toEqual([{ kind: "cite", refs: ["a1b2c3", "d4e5f6"] }])
+  })
+})
+
+describe("linkRefs", () => {
+  it("turns each ref into a numbered cite link", () => {
+    const text = "pin it [a1b2c3, d4e5f6]. done [d4e5f6]"
+    expect(linkRefs(text, numberCitations(text, []))).toBe("pin it [1](#cite-a1b2c3)[2](#cite-d4e5f6). done [2](#cite-d4e5f6)")
   })
 })
 

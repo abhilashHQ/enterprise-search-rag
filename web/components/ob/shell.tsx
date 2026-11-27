@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useCallback, useEffect, useState } from "react"
 import { Menu, Plus, X } from "lucide-react"
 
+import { newChat } from "@/components/ob/chat"
 import { PixelLogo } from "@/components/ob/logo"
 import { Nav } from "@/components/ob/nav"
 import { AdminPill, PersonAvatar, PersonPicker } from "@/components/ob/person-picker"
@@ -66,6 +67,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const chats = useChats(person?.id)
   const pending = usePendingCount(Boolean(person?.is_admin))
   const close = () => setOpen(false)
+  const fresh = () => {
+    close()
+    newChat()
+  }
 
   return (
     <>
@@ -85,13 +90,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <Link href="/" onClick={close} className="flex items-center gap-2 px-3 max-[899px]:pl-12">
+        <Link href="/" onClick={fresh} className="flex items-center gap-2 px-3 max-[899px]:pl-12">
           <PixelLogo size={24} />
           <span className="text-[17px] font-semibold tracking-[-0.01em]">orgbrain</span>
         </Link>
         <Link
           href="/"
-          onClick={close}
+          onClick={fresh}
           className="ob-pill mt-5 mb-3 flex h-9 items-center justify-center gap-1.5 bg-ob-ink text-[14px] font-medium text-white hover:bg-black/80"
         >
           <Plus className="size-4" aria-hidden />
