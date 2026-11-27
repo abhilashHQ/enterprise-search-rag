@@ -24,3 +24,5 @@ data/codex_work/
 .venv-old/
 data/gate/
 data/leaderboard/
+data/demo_build/
+data/demo/

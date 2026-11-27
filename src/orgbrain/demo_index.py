@@ -145,9 +145,6 @@ async def restore(m: Manifest, src: Path, settings: Settings, force: bool = Fals
             if dest.exists():
                 raise FileExistsError(f"{dest} already exists; pass --force to replace it")
 
-    for a, c in qdrant:
-        print(f"restoring qdrant {c} from {a.name} ({a.size / GB:.2f} GB)", flush=True)
-        await asyncio.to_thread(upload_snapshot, settings.qdrant_url, c, src / a.name)
     for a, dest in files:
         print(f"writing {dest}", flush=True)
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -167,3 +164,7 @@ async def restore(m: Manifest, src: Path, settings: Settings, force: bool = Fals
         await people.set_admin(ADMINS, True)
         print(f"loaded {len(rows):,} people, admins {', '.join(ADMINS)}", flush=True)
     ensure_live(settings.live_path)
+    # Last: the search service starts serving once both collections exist, and by then the files above are in place.
+    for a, c in qdrant:
+        print(f"restoring qdrant {c} from {a.name} ({a.size / GB:.2f} GB)", flush=True)
+        await asyncio.to_thread(upload_snapshot, settings.qdrant_url, c, src / a.name)
