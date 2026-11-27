@@ -12,6 +12,7 @@ import json
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 
 from fastapi import FastAPI
@@ -24,6 +25,7 @@ from entsearch.data import ROOT
 from orgbrain.answer import collect_hits, collect_people, finalize
 from orgbrain.config import Settings
 from orgbrain.db import ConversationStore
+from orgbrain.docs import DocReader
 from orgbrain.instructions import instructions
 from orgbrain.memory import MemoryStore
 from orgbrain.people import PeopleStore
@@ -42,13 +44,34 @@ class DecideRequest(BaseModel):
     user_id: str
 
 
-def create_app(runtime, store: ConversationStore, memories=None, people=None, cache=None, embed=None) -> FastAPI:
-    app = FastAPI(title="orgbrain")
+def create_app(runtime, store: ConversationStore, memories=None, people=None, cache=None, embed=None,
+               docs: DocReader | None = None) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(_app):
+        if docs is not None:
+            await asyncio.to_thread(docs.counts)
+        yield
+
+    app = FastAPI(title="orgbrain", lifespan=lifespan)
     busy = asyncio.Lock()
 
     @app.get("/api/health")
     async def health():
         return {"status": "ok", "runtime": runtime.name}
+
+    @app.get("/api/documents/{doc_id:path}")
+    async def document(doc_id: str):
+        d = await asyncio.to_thread(docs.get, doc_id)
+        return d if d else JSONResponse({"error": f"no document {doc_id}"}, status_code=404)
+
+    @app.get("/api/people")
+    async def find_people(q: str = "", k: int = 20):
+        return await people.find(q, min(k, 100))
+
+    @app.get("/api/people/{pid}")
+    async def person(pid: str):
+        p = await people.get(pid)
+        return p if p else JSONResponse({"error": f"no person {pid}"}, status_code=404)
 
     @app.get("/api/memories")
     async def list_memories(status: str | None = None):
@@ -166,7 +189,8 @@ def main() -> None:
     store = ConversationStore(create_async_engine(settings.database_url))
     uvicorn.run(create_app(runtime, store, memories=MemoryStore(store.sessions), people=PeopleStore(store.sessions),
                            cache=SemanticCache(Redis.from_url(settings.redis_url)),
-                           embed=ModelsClient(settings.models_url).embed_query), host=a.host, port=a.port)
+                           embed=ModelsClient(settings.models_url).embed_query,
+                           docs=DocReader(settings.docstore_path, settings.live_path)), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

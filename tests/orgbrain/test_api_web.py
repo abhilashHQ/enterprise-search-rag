@@ -2,6 +2,15 @@ import httpx
 import pytest
 
 from api_helpers import FakeRuntime, app_for, ask
+from orgbrain.api import create_app
+from orgbrain.docs import DocReader
+from orgbrain.people import PeopleStore
+from test_docs import make_docs
+
+PEOPLE = [{"id": "monica.patel", "name": "Monica Patel", "role": "VP Engineering", "team": "Platform",
+           "topics": ["billing"], "doc_count": 40},
+          {"id": "maria.garcia", "name": "Maria Garcia", "role": "SRE", "team": "Infra", "topics": ["canary"],
+           "doc_count": 90}]
 
 
 @pytest.fixture
@@ -27,3 +36,26 @@ async def test_conversations_are_listed_for_their_owner_and_readable():
         r = await c.get("/api/conversations/nope")
         assert r.status_code == 404 and "error" in r.json()
 
+
+async def web_app(tmp_path, **kw):
+    _, store = await app_for(FakeRuntime())
+    people = PeopleStore(store.sessions)
+    await people.replace_all(PEOPLE)
+    live = make_docs(tmp_path / "live.sqlite", [("file:notes:sub/a.md", "files", "a", "notes body")])
+    docs = DocReader(make_docs(tmp_path / "docstore.sqlite", [("d1", "confluence", "Runbook", "x")]), live)
+    return create_app(FakeRuntime(), store, people=people, docs=docs, **kw), store
+
+
+@pytest.mark.anyio
+async def test_documents_by_id_and_people_search(tmp_path):
+    app, _ = await web_app(tmp_path)
+    async with client(app) as c:
+        d = (await c.get("/api/documents/file:notes:sub/a.md")).json()
+        assert d == {"doc_id": "file:notes:sub/a.md", "source": "files", "title": "a", "content": "notes body"}
+        assert (await c.get("/api/documents/d1")).json()["title"] == "Runbook"
+        r = await c.get("/api/documents/nope")
+        assert r.status_code == 404 and "error" in r.json()
+        assert [p["name"] for p in (await c.get("/api/people", params={"q": "billing"})).json()] == ["Monica Patel"]
+        assert [p["id"] for p in (await c.get("/api/people")).json()] == ["maria.garcia", "monica.patel"]
+        assert (await c.get("/api/people/monica.patel")).json()["role"] == "VP Engineering"
+        assert (await c.get("/api/people/nobody")).status_code == 404
