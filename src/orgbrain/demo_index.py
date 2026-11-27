@@ -16,7 +16,7 @@ from orgbrain.config import Settings
 from orgbrain.fts import ensure_live
 
 MANIFEST = "manifest.json"
-DEFAULT_REPO = "<filled in Task 3 once the user names the HF repo>"
+DEFAULT_REPO = "abhilash242299/orgbrain-redwood-index"
 ADMINS = ["monica.patel", "vivek.kulkarni"]
 GB = 1 << 30
 
