@@ -48,3 +48,18 @@ async def test_unknown_memory_and_rejection():
         await mem.decide(99, "approve", "maria")
     mid = await mem.propose("Use pnpm")
     assert (await mem.decide(mid, "reject", "maria"))["status"] == "rejected"
+
+
+@pytest.mark.anyio
+async def test_list_carries_names_and_accepts_a_status_list():
+    mem, _ = await store()
+    a = await mem.propose("Deploy freeze starts Dec 15", proposed_by="sam", conversation_id="c1")
+    b = await mem.propose("Use pnpm", proposed_by="ghost")
+    await mem.propose("Still pending")
+    out = await mem.decide(a, "approve", "maria")
+    assert (out["proposed_by_name"], out["decided_by_name"]) == ("Sam Ortiz", "Maria Lopez")
+    await mem.decide(b, "reject", "maria")
+    rows = {m["id"]: m for m in await mem.list("approved, rejected")}
+    assert sorted(rows) == [a, b]
+    assert (rows[a]["proposed_by_name"], rows[a]["decided_by_name"]) == ("Sam Ortiz", "Maria Lopez")
+    assert rows[b]["proposed_by_name"] is None and rows[b]["decided_by_name"] == "Maria Lopez"

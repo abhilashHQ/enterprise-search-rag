@@ -17,7 +17,7 @@ from dataclasses import asdict
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import create_async_engine
 from sse_starlette.sse import EventSourceResponse
 
@@ -42,6 +42,19 @@ class AskRequest(BaseModel):
 
 class DecideRequest(BaseModel):
     user_id: str
+
+
+class ProposeRequest(BaseModel):
+    text: str
+    user_id: str
+    conversation_id: str | None = None
+
+    @field_validator("text")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("text is empty")
+        return v.strip()
 
 
 def create_app(runtime, store: ConversationStore, memories=None, people=None, cache=None, embed=None,
@@ -76,6 +89,10 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
     @app.get("/api/memories")
     async def list_memories(status: str | None = None):
         return await memories.list(status)
+
+    @app.post("/api/memories")
+    async def propose(req: ProposeRequest):
+        return {"id": await memories.propose(req.text, req.user_id, req.conversation_id)}
 
     @app.post("/api/memories/{memory_id}/{action}")
     async def decide(memory_id: int, action: str, req: DecideRequest):

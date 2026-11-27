@@ -59,3 +59,19 @@ async def test_documents_by_id_and_people_search(tmp_path):
         assert [p["id"] for p in (await c.get("/api/people")).json()] == ["maria.garcia", "monica.patel"]
         assert (await c.get("/api/people/monica.patel")).json()["role"] == "VP Engineering"
         assert (await c.get("/api/people/nobody")).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_propose_from_the_memory_page():
+    from orgbrain.memory import MemoryStore
+
+    _, store = await app_for(FakeRuntime())
+    mem = MemoryStore(store.sessions)
+    app = create_app(FakeRuntime(), store, memories=mem)
+    async with client(app) as c:
+        assert (await c.post("/api/memories", json={"text": "   ", "user_id": "maria"})).status_code == 422
+        r = await c.post("/api/memories", json={"text": " billing moved to payments ", "user_id": "maria"})
+        mid = r.json()["id"]
+        rows = (await c.get("/api/memories", params={"status": "pending"})).json()
+    assert [(m["id"], m["text"], m["status"], m["proposed_by"]) for m in rows] == [
+        (mid, "billing moved to payments", "pending", "maria")]
