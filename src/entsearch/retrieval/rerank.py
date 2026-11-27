@@ -54,17 +54,19 @@ AttentionMaskInterface.register("sdpa_repeat_kv", sdpa_mask)
 class Reranker:
     def __init__(
         self, instruction: str = INSTRUCTION, max_length: int = 4096, token_budget: int = 16_384, model: str = MODEL,
-        dtype: torch.dtype = torch.float16,
+        dtype: torch.dtype | None = None, device: str = "cuda",
     ):
         """max_length caps the full prompt; the doc tail is truncated. token_budget caps padded tokens per batch.
 
         fp16, not bf16: against fp32, bf16 p(yes) drifts up to 0.06 with batch shape and creates spurious ties
-        (9 of 48 pairs); fp16 stays within 0.007 at the same speed.
+        (9 of 48 pairs); fp16 stays within 0.007 at the same speed. On CPU the default is fp32.
         """
+        self.device = device
+        dtype = dtype or (torch.float16 if device == "cuda" else torch.float32)
         self.tok = AutoTokenizer.from_pretrained(model, padding_side="left")
         # device_map loads weights straight onto the GPU; .cuda() after a CPU load keeps ~1 GB more host memory.
         self.model = AutoModelForCausalLM.from_pretrained(
-            model, dtype=dtype, attn_implementation="sdpa_repeat_kv", device_map="cuda"
+            model, dtype=dtype, attn_implementation="sdpa_repeat_kv", device_map=device
         ).eval()
         self.instruction, self.token_budget = instruction, token_budget
         self.yes, self.no = self.tok.convert_tokens_to_ids("yes"), self.tok.convert_tokens_to_ids("no")
@@ -87,7 +89,7 @@ class Reranker:
             # Longest first, so the first pair in each batch sets the padded length.
             n = max(1, self.token_budget // len(ids[order[start]]))
             batch = order[start : start + n]
-            enc = self.tok.pad({"input_ids": [ids[i] for i in batch]}, padding=True, return_tensors="pt").to("cuda")
+            enc = self.tok.pad({"input_ids": [ids[i] for i in batch]}, padding=True, return_tensors="pt").to(self.device)
             logits = self.model(**enc, logits_to_keep=1).logits[:, -1, [self.no, self.yes]].float()
             out[batch] = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
             start += n

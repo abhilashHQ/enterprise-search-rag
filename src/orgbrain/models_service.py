@@ -61,7 +61,7 @@ def main() -> None:
     p.add_argument("--port", type=int, default=8766)
     a = p.parse_args()
     encoder = QueryEncoder(device=a.device)
-    reranker = Reranker(token_budget=8192)
+    reranker = Reranker(token_budget=8192, device=a.device)
 
     def rerank(query: str, docs: list[str]) -> np.ndarray:
         try:

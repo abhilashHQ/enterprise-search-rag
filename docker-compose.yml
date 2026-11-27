@@ -76,7 +76,7 @@ services:
     environment:
       <<: *env
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    volumes: [data:/app/data, "${CODEX_HOME:-~/.codex}:/root/.codex"]
+    volumes: [data:/app/data, codex:/root/.codex]
     ports: ["127.0.0.1:${ORGBRAIN_API_PORT:-8000}:8000"]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -110,7 +110,7 @@ services:
       ORGBRAIN_SLACK_BOT_TOKEN: ${ORGBRAIN_SLACK_BOT_TOKEN:-}
       ORGBRAIN_SLACK_APP_TOKEN: ${ORGBRAIN_SLACK_APP_TOKEN:-}
       ORGBRAIN_SLACK_USERS: ${ORGBRAIN_SLACK_USERS:-{}}
-    volumes: [data:/app/data, "${CODEX_HOME:-~/.codex}:/root/.codex"]
+    volumes: [data:/app/data, codex:/root/.codex]
     depends_on: [api]
     restart: unless-stopped
 
@@ -130,6 +130,7 @@ services:
 
 volumes:
   data:
+  codex:
   qdrant:
   postgres:
   redis:
