@@ -46,3 +46,4 @@ next-env.d.ts
 
 # app-smoke.mjs output
 /e2e/screenshots/
+/e2e/video/
