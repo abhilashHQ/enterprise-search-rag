@@ -111,13 +111,18 @@ def make_backend(name: str, data_dir: Path, dense: str, device: str) -> SearchBa
     if name == "local":
         return LocalSearch.load(data_dir, dense=dense, device=device)
     if name == "qdrant":
+        from qdrant_client import QdrantClient
+
         from orgbrain.qdrant_store import CHUNKS, DOCS, QdrantSearch
 
-        backend = QdrantSearch.connect(Settings.from_env())
-        wait_for(backend.client.get_collections, "qdrant")
+        settings = Settings.from_env()
+        probe = QdrantClient(url=settings.qdrant_url, timeout=120)
+        counts = wait_for(lambda: {c: probe.count(c).count for c in (DOCS, CHUNKS)},
+                          "the index in qdrant (run orgbrain demo)", timeout=float("inf"), every=10)
+        backend = QdrantSearch.connect(settings)
         log.info("model service: %s", wait_for(backend.models.health, "model service"))
-        for c in (DOCS, CHUNKS):
-            log.info("%s: %s points", c, backend.client.count(c).count)
+        for c, n in counts.items():
+            log.info("%s: %s points", c, n)
         return backend
     raise ValueError(f"unknown backend {name!r}; use local or qdrant")
 

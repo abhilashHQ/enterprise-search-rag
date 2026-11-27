@@ -1,0 +1,4 @@
+services:
+  models:
+    gpus: !reset []
+    command: ["orgbrain-models", "--host", "0.0.0.0", "--device", "cpu"]

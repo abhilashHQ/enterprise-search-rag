@@ -36,3 +36,12 @@ def test_no_redwood_docstore(tmp_path):
     live = make_docs(tmp_path / "live.sqlite", [("m1", "memory", "Memory", "x")])
     r = DocReader(tmp_path / "missing.sqlite", live)
     assert r.get("m1")["source"] == "memory" and r.counts() == {"memory": 1}
+
+
+def test_redwood_docstore_restored_after_start_is_picked_up(tmp_path):
+    live = make_docs(tmp_path / "live.sqlite", [("m1", "memory", "Memory", "x")])
+    r = DocReader(tmp_path / "docstore.sqlite", live)
+    assert r.get("d1") is None and r.counts() == {"memory": 1}
+    make_docs(tmp_path / "docstore.sqlite", [("d1", "confluence", "Runbook", "text")])
+    assert r.get("d1")["title"] == "Runbook"
+    assert r.counts() == {"confluence": 1, "memory": 1}

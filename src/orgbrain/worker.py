@@ -121,8 +121,10 @@ async def run(settings, consumer: str) -> None:
     redis = Redis.from_url(settings.redis_url, decode_responses=True, socket_timeout=30)
     models_ = ModelsClient(settings.models_url)
     wait_for(models_.health, "model service")
-    writer = IndexWriter(QdrantClient(url=settings.qdrant_url, timeout=120), models_,
-                         read_bm25_stats(settings.bm25_stats_path)["avgdl"], settings.live_path)
+    stats = wait_for(lambda: read_bm25_stats(settings.bm25_stats_path), "bm25 stats (run orgbrain demo)",
+                     timeout=float("inf"), every=10)
+    writer = IndexWriter(QdrantClient(url=settings.qdrant_url, timeout=120), models_, stats["avgdl"],
+                         settings.live_path)
     cache = SemanticCache(Redis.from_url(settings.redis_url))
 
     async def on_indexed(doc_id, vec):

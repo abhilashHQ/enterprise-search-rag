@@ -236,7 +236,7 @@ def main() -> None:
     p.add_argument("--runtime", choices=["codex", "api"], default="codex")
     p.add_argument("--model", default="gpt-6-luna")
     p.add_argument("--effort", default="low", help="reasoning effort (codex runtime)")
-    p.add_argument("--mcp-url", default="http://127.0.0.1:8765/mcp")
+    p.add_argument("--mcp-url", default=Settings.from_env().mcp_url)
     p.add_argument("--base-url", help="OpenAI-compatible endpoint (api runtime)")
     p.add_argument("--api-key-env", default="OPENAI_API_KEY")
     p.add_argument("--company", default="Redwood Inference")

@@ -1,16 +1,25 @@
 name: orgbrain
 
+x-env: &env
+  ORGBRAIN_QDRANT_URL: http://qdrant:6333
+  ORGBRAIN_MODELS_URL: http://models:8766
+  ORGBRAIN_DATABASE_URL: postgresql+asyncpg://orgbrain:orgbrain@postgres:5432/orgbrain
+  ORGBRAIN_REDIS_URL: redis://redis:6379/0
+  ORGBRAIN_API_URL: http://api:8000
+  ORGBRAIN_MCP_URL: http://search:8765/mcp
+
 services:
   qdrant:
     image: qdrant/qdrant:v1.19.1
-    ports: ["127.0.0.1:6333:6333", "127.0.0.1:6334:6334"]
+    ports: ["127.0.0.1:${ORGBRAIN_QDRANT_PORT:-6333}:6333"]
     volumes: [qdrant:/qdrant/storage]
     environment:
       QDRANT__SERVICE__MAX_REQUEST_SIZE_MB: "64"
+    restart: unless-stopped
 
   postgres:
     image: postgres:17
-    ports: ["127.0.0.1:5432:5432"]
+    ports: ["127.0.0.1:${ORGBRAIN_POSTGRES_PORT:-5432}:5432"]
     environment:
       POSTGRES_USER: orgbrain
       POSTGRES_PASSWORD: orgbrain
@@ -20,11 +29,90 @@ services:
       test: ["CMD-SHELL", "pg_isready -U orgbrain"]
       interval: 5s
       retries: 10
+    restart: unless-stopped
 
   redis:
     image: redis:8
-    ports: ["127.0.0.1:6379:6379"]
+    ports: ["127.0.0.1:${ORGBRAIN_REDIS_PORT:-6379}:6379"]
     volumes: [redis:/data]
+    restart: unless-stopped
+
+  migrate:
+    image: orgbrain
+    build: { context: ., dockerfile: docker/app.Dockerfile }
+    command: alembic upgrade head
+    environment: *env
+    volumes: [data:/app/data]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  models:
+    image: orgbrain-models
+    build: { context: ., dockerfile: docker/models.Dockerfile }
+    gpus: all
+    volumes: [hf:/hf]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8766/health')"]
+      interval: 10s
+      start_period: 30m
+      retries: 6
+    restart: unless-stopped
+
+  search:
+    image: orgbrain
+    command: orgbrain-search --backend qdrant --host 0.0.0.0
+    environment: *env
+    volumes: [data:/app/data]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      qdrant: { condition: service_started }
+      models: { condition: service_healthy }
+    restart: unless-stopped
+
+  api:
+    image: orgbrain
+    command: orgbrain-api --host 0.0.0.0 ${ORGBRAIN_API_ARGS:-}
+    # Codex's read-only sandbox (bubblewrap) needs user namespaces, which Docker's default seccomp profile blocks.
+    security_opt: [seccomp=unconfined]
+    environment:
+      <<: *env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes: [data:/app/data, "${CODEX_HOME:-~/.codex}:/root/.codex"]
+    ports: ["127.0.0.1:${ORGBRAIN_API_PORT:-8000}:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      search: { condition: service_started }
+    restart: unless-stopped
+
+  worker:
+    image: orgbrain
+    command: orgbrain-worker
+    environment: *env
+    volumes: [data:/app/data]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      models: { condition: service_healthy }
+    restart: unless-stopped
+
+  web:
+    image: orgbrain-web
+    build: { context: web, args: { ORGBRAIN_API_URL: http://api:8000 } }
+    ports: ["127.0.0.1:${ORGBRAIN_WEB_PORT:-3000}:3000"]
+    depends_on: [api]
+    restart: unless-stopped
+
+  slack:
+    profiles: [slack]
+    image: orgbrain
+    command: orgbrain-slack run
+    security_opt: [seccomp=unconfined]
+    environment:
+      <<: *env
+      ORGBRAIN_SLACK_BOT_TOKEN: ${ORGBRAIN_SLACK_BOT_TOKEN:-}
+      ORGBRAIN_SLACK_APP_TOKEN: ${ORGBRAIN_SLACK_APP_TOKEN:-}
+      ORGBRAIN_SLACK_USERS: ${ORGBRAIN_SLACK_USERS:-{}}
+    volumes: [data:/app/data, "${CODEX_HOME:-~/.codex}:/root/.codex"]
+    depends_on: [api]
+    restart: unless-stopped
 
   opensearch:
     profiles: [research]
@@ -41,7 +129,9 @@ services:
       - erb-opensearch-data:/usr/share/opensearch/data
 
 volumes:
+  data:
   qdrant:
   postgres:
   redis:
+  hf:
   erb-opensearch-data:
