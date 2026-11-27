@@ -1,0 +1,27 @@
+.ob {
+  --ob-bg: #ffffff;
+  --ob-ink: #111111;
+  --ob-muted: #6b6b6b;
+  --ob-line: #ececec;
+  --ob-panel: #f6f6f4;
+  --ob-accent: #2f9bff;
+  /* The accent fails 4.5:1 as text on white, so text in the accent colour uses this darker step of it. */
+  --ob-accent-ink: #0a6fd6;
+  --ob-accent-soft: #e8f3ff;
+  --ob-pending: #f5a524;
+  --ob-ok: #17a34a;
+  --ob-off: #9b9b9b;
+  --ob-error: #e5484d;
+  --ob-error-ink: #c9282d;
+  background: var(--ob-bg);
+  color: var(--ob-ink);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.ob h1 { font-size: 36px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; }
+.ob .ob-card { background: var(--ob-bg); border: 1px solid var(--ob-line); border-radius: 20px; }
+.ob .ob-panel { background: var(--ob-panel); border-radius: 20px; }
+.ob .ob-pill { border-radius: 999px; }
+.ob .ob-meta { font-size: 13px; color: var(--ob-muted); }
+.ob :focus-visible { outline: 2px solid var(--ob-accent); outline-offset: 2px; }
+.ob .ob-lift { animation: lift-in 0.28s ease-out both; }

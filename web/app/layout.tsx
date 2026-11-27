@@ -6,8 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Enterprise Search - cited answers over company documents",
-  description: "Hybrid retrieval, reranking, cited answers and a confidence check over 512K company documents.",
+  title: "orgbrain",
+  description: "your company's brain, cited",
 }
 
 // Runs before first paint: theme from ?theme= or the stored choice, ?record=1 recording mode, and in recording mode a

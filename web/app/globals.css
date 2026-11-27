@@ -283,3 +283,21 @@ html[data-record] .app-shell { min-height: calc(100dvh / 1.125 - 1.5rem); }
 }
 html[data-record] .dev-only { display: none !important; }
 html[data-record][data-idle] * { cursor: none !important; }
+
+/* orgbrain app tokens for Tailwind (text-ob-muted, bg-ob-panel, ...). The values live under .ob in
+   app/(app)/orgbrain.css; Tailwind only reads @theme from the stylesheet that imports it. */
+@theme inline {
+  --color-ob-bg: var(--ob-bg);
+  --color-ob-ink: var(--ob-ink);
+  --color-ob-muted: var(--ob-muted);
+  --color-ob-line: var(--ob-line);
+  --color-ob-panel: var(--ob-panel);
+  --color-ob-accent: var(--ob-accent);
+  --color-ob-accent-ink: var(--ob-accent-ink);
+  --color-ob-accent-soft: var(--ob-accent-soft);
+  --color-ob-pending: var(--ob-pending);
+  --color-ob-ok: var(--ob-ok);
+  --color-ob-off: var(--ob-off);
+  --color-ob-error: var(--ob-error);
+  --color-ob-error-ink: var(--ob-error-ink);
+}

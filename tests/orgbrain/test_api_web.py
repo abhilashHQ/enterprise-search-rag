@@ -141,3 +141,11 @@ async def test_settings_switch_the_runtime_for_the_next_question(monkeypatch):
         assert (await c.get("/api/health")).json()["model"] == "gpt-6.2-sol"
     _, events = await ask(app, {"message": "q2", "conversation_id": cid})
     assert events[-2][1]["text"] == "answered by gpt-6.2-sol"
+
+
+@pytest.mark.anyio
+async def test_the_event_stream_tells_proxies_not_to_compress_it():
+    app, _ = await app_for(FakeRuntime())
+    async with client(app) as c:
+        r = await c.post("/api/ask", json={"message": "q"})
+    assert "no-transform" in r.headers["cache-control"]

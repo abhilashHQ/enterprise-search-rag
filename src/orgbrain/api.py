@@ -223,7 +223,8 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                 except Exception as e:
                     yield {"event": "error", "data": json.dumps({"message": str(e)})}
 
-        return EventSourceResponse(stream())
+        # no-transform: proxies that compress (Next's rewrite does) must not gzip the stream, gzip buffers it.
+        return EventSourceResponse(stream(), headers={"Cache-Control": "no-store, no-transform"})
 
     return app
 
