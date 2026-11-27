@@ -134,7 +134,7 @@ def build_app(settings, api, sessions=None, on_channel_message=None):
 def settings_token(name: str) -> str:
     token = os.environ.get(name)
     if not token:
-        raise SystemExit(f"{name} is not set; see docs/slack-setup.md")
+        raise SystemExit(f"{name} is not set; see docs/slack.md")
     return token
 
 
