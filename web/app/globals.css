@@ -297,6 +297,7 @@ html[data-record][data-idle] * { cursor: none !important; }
   --color-ob-accent-soft: var(--ob-accent-soft);
   --color-ob-pending: var(--ob-pending);
   --color-ob-ok: var(--ob-ok);
+  --color-ob-ok-ink: var(--ob-ok-ink);
   --color-ob-off: var(--ob-off);
   --color-ob-error: var(--ob-error);
   --color-ob-error-ink: var(--ob-error-ink);
