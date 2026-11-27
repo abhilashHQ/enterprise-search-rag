@@ -57,3 +57,27 @@ async def test_enqueue_commits_with_the_callers_row():
         mem = (await s.execute(select(Memory))).scalar_one()
     assert (row.kind, row.doc_id, row.published_at) == ("upsert", f"memory:{mem.id}", None)
     assert mem.status == "pending" and row.payload["content"] == "Deploy freeze starts Dec 15"
+
+
+@pytest.fixture
+async def store():
+    return await make_store()
+
+
+@pytest.mark.anyio
+async def test_conversations_are_listed_per_person_newest_first(store):
+    await store.save_turn("c1", "fake", None, "where is the canary runbook?", "here [a1b2c3]", [], user_id="maria")
+    await store.save_turn("c2", "fake", None, "who owns billing?", "grace", [], user_id="maria")
+    await store.save_turn("c3", "fake", None, "unrelated", "x", [], user_id="vivek")
+    await store.save_turn("c1", "fake", None, "and the rollback?", "pin it", [], user_id="maria")
+    rows = await store.list_for("maria")
+    assert [r["id"] for r in rows] == ["c1", "c2"]
+    assert rows[0]["title"] == "where is the canary runbook?"
+
+
+@pytest.mark.anyio
+async def test_get_returns_messages_and_owner(store):
+    await store.save_turn("c1", "fake", None, "q", "a", [{"ref": "a1b2c3"}], user_id="maria")
+    c = await store.get("c1")
+    assert c["user_id"] == "maria" and [m["role"] for m in c["messages"]] == ["user", "assistant"]
+    assert await store.get("nope") is None

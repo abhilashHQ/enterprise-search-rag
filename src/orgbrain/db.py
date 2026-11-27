@@ -16,6 +16,8 @@ class Conversation(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     runtime: Mapped[str] = mapped_column(String(32))
     runtime_session_id: Mapped[str | None] = mapped_column(String(128))
+    user_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    title: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -85,6 +87,13 @@ class SourceFile(Base):
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class SlackEvent(Base):
     __tablename__ = "slack_events"
     event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -105,14 +114,15 @@ class ConversationStore:
             return c.runtime_session_id if c else None
 
     async def save_turn(self, cid: str, runtime: str, session_id: str | None, question: str, answer_text: str,
-                        citations: list[dict]) -> None:
+                        citations: list[dict], user_id: str | None = None) -> None:
         async with self.sessions.begin() as s:
             c = await s.get(Conversation, cid)
             if c is None:
-                c = Conversation(id=cid, runtime=runtime)
+                c = Conversation(id=cid, runtime=runtime, user_id=user_id, title=" ".join(question.split())[:80])
                 s.add(c)
             if session_id:
                 c.runtime_session_id = session_id
+            c.updated_at = func.now()
             await s.flush()
             s.add_all([Message(conversation_id=cid, role="user", text=question, citations=[]),
                        Message(conversation_id=cid, role="assistant", text=answer_text, citations=citations)])
@@ -121,3 +131,18 @@ class ConversationStore:
         async with self.sessions() as s:
             rows = (await s.execute(select(Message).where(Message.conversation_id == cid).order_by(Message.id))).scalars()
             return [{"role": m.role, "text": m.text, "citations": m.citations} for m in rows]
+
+    async def list_for(self, user_id: str, limit: int = 50) -> list[dict]:
+        q = (select(Conversation).where(Conversation.user_id == user_id)
+             .order_by(Conversation.updated_at.desc(), Conversation.id).limit(limit))
+        async with self.sessions() as s:
+            return [{"id": c.id, "title": c.title, "updated_at": c.updated_at.isoformat()}
+                    for c in (await s.execute(q)).scalars()]
+
+    async def get(self, cid: str) -> dict | None:
+        async with self.sessions() as s:
+            c = await s.get(Conversation, cid)
+            if c is None:
+                return None
+            info = {"id": c.id, "title": c.title, "user_id": c.user_id}
+        return {**info, "messages": await self.messages(cid)}

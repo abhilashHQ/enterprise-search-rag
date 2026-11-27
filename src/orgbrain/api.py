@@ -65,6 +65,15 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
         except ValueError as e:
             return JSONResponse({"error": str(e)}, status_code=409)
 
+    @app.get("/api/conversations")
+    async def conversations(user_id: str):
+        return await store.list_for(user_id)
+
+    @app.get("/api/conversations/{cid}")
+    async def conversation(cid: str):
+        c = await store.get(cid)
+        return c if c else JSONResponse({"error": f"no conversation {cid}"}, status_code=404)
+
     @app.post("/api/ask")
     async def ask(req: AskRequest):
         if busy.locked():
@@ -79,7 +88,8 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                     qvec = await asyncio.to_thread(embed, req.message) if use_cache else None
                     if qvec is not None and not req.rerun and (hit := await cache.get(qvec)):
                         answer = {k: hit[k] for k in ("text", "citations")}
-                        await store.save_turn(cid, runtime.name, None, req.message, answer["text"], answer["citations"])
+                        await store.save_turn(cid, runtime.name, None, req.message, answer["text"], answer["citations"],
+                                              user_id=req.user_id)
                         yield {"event": "answer", "data": json.dumps({**answer, "conversation_id": cid, "from_cache": True})}
                         yield {"event": "done", "data": json.dumps({"seconds": round(time.perf_counter() - start, 2), "from_cache": True})}
                         return
@@ -108,7 +118,7 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                         elif isinstance(ev, Done):
                             answer = asdict(finalize(text, collect_hits(results), collect_people(results)))
                             await store.save_turn(cid, runtime.name, ev.session_id, req.message, answer["text"],
-                                                  answer["citations"])
+                                                  answer["citations"], user_id=req.user_id)
                             if qvec is not None:
                                 await cache.put(req.message, qvec, answer)
                             yield {"event": "answer", "data": json.dumps({**answer, "conversation_id": cid})}
