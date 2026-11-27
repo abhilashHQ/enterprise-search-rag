@@ -22,7 +22,6 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import create_async_engine
 from sse_starlette.sse import EventSourceResponse
 
-from entsearch.data import ROOT
 from orgbrain.answer import collect_hits, collect_people, finalize
 from orgbrain.config import Settings
 from orgbrain.connectors.folder import sync_folder
@@ -32,6 +31,7 @@ from orgbrain.instructions import instructions
 from orgbrain.memory import MemoryStore
 from orgbrain.people import PeopleStore
 from orgbrain.runtime.events import Done, Message, ToolCall, ToolResult
+from orgbrain.runtime_settings import RuntimeConfig, RuntimeSettings, build_runtime
 from orgbrain.uploads import save_uploads, sources_overview
 
 
@@ -45,6 +45,14 @@ class AskRequest(BaseModel):
 
 class DecideRequest(BaseModel):
     user_id: str
+
+
+class SettingsRequest(BaseModel):
+    runtime: str
+    model: str
+    effort: str = "low"
+    base_url: str | None = None
+    api_key_env: str = "OPENAI_API_KEY"
 
 
 class ProposeRequest(BaseModel):
@@ -61,7 +69,8 @@ class ProposeRequest(BaseModel):
 
 
 def create_app(runtime, store: ConversationStore, memories=None, people=None, cache=None, embed=None,
-               docs: DocReader | None = None, uploads: Path | None = None) -> FastAPI:
+               docs: DocReader | None = None, uploads: Path | None = None,
+               runtimes: RuntimeSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app):
         if docs is not None:
@@ -71,9 +80,27 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
     app = FastAPI(title="orgbrain", lifespan=lifespan)
     busy = asyncio.Lock()
 
+    async def current():
+        return await runtimes.runtime() if runtimes is not None else runtime
+
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "runtime": runtime.name}
+        if runtimes is None:
+            return {"status": "ok", "runtime": runtime.name, "model": None}
+        cfg = await runtimes.get()
+        return {"status": "ok", "runtime": cfg.runtime, "model": cfg.model}
+
+    @app.get("/api/settings")
+    async def get_settings():
+        cfg = await runtimes.get()
+        return {"runtime": asdict(cfg), "env_present": cfg.api_key_env in os.environ}
+
+    @app.put("/api/settings")
+    async def put_settings(req: SettingsRequest):
+        try:
+            return asdict(await runtimes.set(RuntimeConfig(**req.model_dump())))
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=422)
 
     @app.get("/api/documents/{doc_id:path}")
     async def document(doc_id: str):
@@ -153,16 +180,17 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
             async with busy:
                 start, results, text = time.perf_counter(), [], ""
                 try:
+                    rt = await current()
                     use_cache = cache is not None and embed is not None and req.conversation_id is None and req.cache
                     qvec = await asyncio.to_thread(embed, req.message) if use_cache else None
                     if qvec is not None and not req.rerun and (hit := await cache.get(qvec)):
                         answer = {k: hit[k] for k in ("text", "citations")}
-                        await store.save_turn(cid, runtime.name, None, req.message, answer["text"], answer["citations"],
+                        await store.save_turn(cid, rt.name, None, req.message, answer["text"], answer["citations"],
                                               user_id=req.user_id)
                         yield {"event": "answer", "data": json.dumps({**answer, "conversation_id": cid, "from_cache": True})}
                         yield {"event": "done", "data": json.dumps({"seconds": round(time.perf_counter() - start, 2), "from_cache": True})}
                         return
-                    prior = await store.runtime_session(cid)
+                    prior = await store.runtime_session(cid, rt.name)
                     message = req.message
                     if prior is None and req.conversation_id and (msgs := await store.messages(cid)):
                         earlier = "\n".join(f"{m['role']}: {m['text']}" for m in msgs)
@@ -170,7 +198,7 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                     person = await people.get(req.user_id) if req.user_id and people is not None else None
                     who = f"Teammate: {person['name']}, id {req.user_id}; " if person else ""
                     message = f"({who}conversation {cid})\n\n{message}"
-                    async for ev in runtime.run(message, prior):
+                    async for ev in rt.run(message, prior):
                         if isinstance(ev, ToolCall):
                             yield {"event": "step", "data": json.dumps({"kind": "tool_call", "tool": ev.tool, "arguments": ev.arguments})}
                         elif isinstance(ev, ToolResult):
@@ -186,7 +214,7 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
                             yield {"event": "message", "data": json.dumps({"text": ev.text})}
                         elif isinstance(ev, Done):
                             answer = asdict(finalize(text, collect_hits(results), collect_people(results)))
-                            await store.save_turn(cid, runtime.name, ev.session_id, req.message, answer["text"],
+                            await store.save_turn(cid, rt.name, ev.session_id, req.message, answer["text"],
                                                   answer["citations"], user_id=req.user_id)
                             if qvec is not None:
                                 await cache.put(req.message, qvec, answer)
@@ -203,9 +231,6 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
 def main() -> None:
     import uvicorn
 
-    from orgbrain.runtime.api_loop import ApiRuntime, McpToolCaller
-    from orgbrain.runtime.codex import CodexConfig, CodexRuntime
-
     p = argparse.ArgumentParser(prog="orgbrain-api", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--runtime", choices=["codex", "api"], default="codex")
     p.add_argument("--model", default="gpt-6-luna")
@@ -218,14 +243,8 @@ def main() -> None:
     p.add_argument("--port", type=int, default=8000)
     a = p.parse_args()
     rules = instructions(a.company)
-    if a.runtime == "codex":
-        runtime = CodexRuntime(CodexConfig(model=a.model, effort=a.effort, mcp_url=a.mcp_url,
-                                           workdir=ROOT / "data/codex_work"), rules)
-    else:
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(base_url=a.base_url, api_key=os.environ[a.api_key_env])
-        runtime = ApiRuntime(client, a.model, McpToolCaller(a.mcp_url), rules)
+    defaults = RuntimeConfig(runtime=a.runtime, model=a.model, effort=a.effort, base_url=a.base_url,
+                             api_key_env=a.api_key_env)
     from redis.asyncio import Redis
 
     from orgbrain.cache import SemanticCache
@@ -233,11 +252,12 @@ def main() -> None:
 
     settings = Settings.from_env()
     store = ConversationStore(create_async_engine(settings.database_url))
-    uvicorn.run(create_app(runtime, store, memories=MemoryStore(store.sessions), people=PeopleStore(store.sessions),
+    runtimes = RuntimeSettings(store.sessions, defaults, lambda cfg: build_runtime(cfg, a.mcp_url, rules))
+    uvicorn.run(create_app(None, store, memories=MemoryStore(store.sessions), people=PeopleStore(store.sessions),
                            cache=SemanticCache(Redis.from_url(settings.redis_url)),
                            embed=ModelsClient(settings.models_url).embed_query,
                            docs=DocReader(settings.docstore_path, settings.live_path),
-                           uploads=settings.uploads_path), host=a.host, port=a.port)
+                           uploads=settings.uploads_path, runtimes=runtimes), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":

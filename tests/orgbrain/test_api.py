@@ -46,7 +46,7 @@ async def test_runtime_failure_becomes_an_error_event():
 @pytest.mark.anyio
 async def test_health_reports_runtime():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=(await app_for(FakeRuntime()))[0]), base_url="http://t") as c:
-        assert (await c.get("/api/health")).json() == {"status": "ok", "runtime": "fake"}
+        assert (await c.get("/api/health")).json() == {"status": "ok", "runtime": "fake", "model": None}
 
 
 @pytest.mark.anyio

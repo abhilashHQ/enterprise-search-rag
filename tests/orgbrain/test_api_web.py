@@ -5,6 +5,7 @@ from api_helpers import FakeRuntime, app_for, ask
 from orgbrain.api import create_app
 from orgbrain.docs import DocReader
 from orgbrain.people import PeopleStore
+from orgbrain.runtime.events import Done, Message
 from test_docs import make_docs
 
 PEOPLE = [{"id": "monica.patel", "name": "Monica Patel", "role": "VP Engineering", "team": "Platform",
@@ -104,3 +105,39 @@ async def test_uploads_sync_into_the_outbox_and_show_in_sources(tmp_path):
     async with store.sessions() as s:
         rows = [(o.kind, o.doc_id) for o in (await s.execute(select(Outbox).order_by(Outbox.id))).scalars()]
     assert rows == [("upsert", "file:uploads:a.md"), ("upsert", "file:uploads:b.md")]
+
+
+class NamedRuntime(FakeRuntime):
+    def __init__(self, cfg):
+        super().__init__()
+        self.name, self.cfg = cfg.runtime, cfg
+
+    async def run(self, message, session_id=None):
+        yield Message(f"answered by {self.cfg.model}")
+        yield Done(f"{self.cfg.model}-session", {})
+
+
+@pytest.mark.anyio
+async def test_settings_switch_the_runtime_for_the_next_question(monkeypatch):
+    from orgbrain.runtime_settings import RuntimeConfig, RuntimeSettings
+
+    monkeypatch.delenv("ORGBRAIN_TEST_KEY", raising=False)
+    _, store = await app_for(FakeRuntime())
+    runtimes = RuntimeSettings(store.sessions, RuntimeConfig(), NamedRuntime)
+    app = create_app(None, store, runtimes=runtimes)
+    async with client(app) as c:
+        got = (await c.get("/api/settings")).json()
+        assert got["runtime"]["model"] == "gpt-6-luna" and got["runtime"]["runtime"] == "codex"
+        assert (await c.get("/api/health")).json() == {"status": "ok", "runtime": "codex", "model": "gpt-6-luna"}
+        bad = await c.put("/api/settings", json={**got["runtime"], "runtime": "api", "base_url": "https://x/v1",
+                                                 "api_key_env": "ORGBRAIN_TEST_KEY"})
+        assert bad.status_code == 422 and "not set" in bad.json()["error"]
+    _, events = await ask(app, {"message": "q"})
+    assert events[-2][1]["text"] == "answered by gpt-6-luna"
+    cid = events[-2][1]["conversation_id"]
+    async with client(app) as c:
+        ok = await c.put("/api/settings", json={**got["runtime"], "model": "gpt-6.2-sol", "effort": "medium"})
+        assert ok.json()["model"] == "gpt-6.2-sol"
+        assert (await c.get("/api/health")).json()["model"] == "gpt-6.2-sol"
+    _, events = await ask(app, {"message": "q2", "conversation_id": cid})
+    assert events[-2][1]["text"] == "answered by gpt-6.2-sol"

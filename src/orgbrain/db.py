@@ -108,10 +108,11 @@ class ConversationStore:
     def __init__(self, engine: AsyncEngine):
         self.sessions = async_sessionmaker(engine, expire_on_commit=False)
 
-    async def runtime_session(self, cid: str) -> str | None:
+    async def runtime_session(self, cid: str, runtime: str | None = None) -> str | None:
+        """The session to resume, only when it belongs to `runtime`: a Codex thread id means nothing to the api loop."""
         async with self.sessions() as s:
             c = await s.get(Conversation, cid)
-            return c.runtime_session_id if c else None
+            return c.runtime_session_id if c and (runtime is None or c.runtime == runtime) else None
 
     async def save_turn(self, cid: str, runtime: str, session_id: str | None, question: str, answer_text: str,
                         citations: list[dict], user_id: str | None = None) -> None:
@@ -121,7 +122,7 @@ class ConversationStore:
                 c = Conversation(id=cid, runtime=runtime, user_id=user_id, title=" ".join(question.split())[:80])
                 s.add(c)
             if session_id:
-                c.runtime_session_id = session_id
+                c.runtime, c.runtime_session_id = runtime, session_id
             c.updated_at = func.now()
             await s.flush()
             s.add_all([Message(conversation_id=cid, role="user", text=question, citations=[]),

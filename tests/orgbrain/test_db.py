@@ -81,3 +81,11 @@ async def test_get_returns_messages_and_owner(store):
     c = await store.get("c1")
     assert c["user_id"] == "maria" and [m["role"] for m in c["messages"]] == ["user", "assistant"]
     assert await store.get("nope") is None
+
+
+@pytest.mark.anyio
+async def test_a_session_from_another_runtime_is_not_resumed(store):
+    await store.save_turn("c1", "codex", "thread-1", "q", "a", [])
+    assert await store.runtime_session("c1", "api") is None and await store.runtime_session("c1", "codex") == "thread-1"
+    await store.save_turn("c1", "api", "api-1", "q2", "a2", [])
+    assert await store.runtime_session("c1", "api") == "api-1"
