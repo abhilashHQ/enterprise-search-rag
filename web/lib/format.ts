@@ -39,3 +39,28 @@ export const VERDICT_LABEL = {
   unsupported: "Unsupported",
   contradicted: "Contradicted",
 } as const;
+
+const RELATIVE = new Intl.RelativeTimeFormat("en", { numeric: "auto" })
+const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["year", 365 * 86400],
+  ["month", 30 * 86400],
+  ["week", 7 * 86400],
+  ["day", 86400],
+  ["hour", 3600],
+  ["minute", 60],
+]
+
+/** "just now", "5 minutes ago", "yesterday", "2 days ago". */
+export function relativeTime(iso: string, now: number = Date.now()): string {
+  const raw = (new Date(iso).getTime() - now) / 1000
+  if (Math.abs(raw) < 45) return "just now"
+  const seconds = Math.round(raw / 60) * 60
+  for (const [unit, size] of UNITS) {
+    if (Math.abs(seconds) >= size) return RELATIVE.format(Math.round(seconds / size), unit)
+  }
+  return RELATIVE.format(Math.sign(seconds) || -1, "minute")
+}
+
+export function isNew(iso: string | null, now: number = Date.now()): boolean {
+  return iso !== null && now - new Date(iso).getTime() < 86400 * 1000
+}
