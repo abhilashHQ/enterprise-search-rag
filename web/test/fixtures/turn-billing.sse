@@ -1,0 +1,57 @@
+event: step
+data: {"kind": "tool_call", "tool": "search", "arguments": {"query": "Who owns the billing service?", "k": 10}}
+
+: ping - 2026-11-27 04:44:20.299343+00:00
+
+event: step
+data: {"kind": "tool_result", "tool": "search", "count": 10, "error": null}
+
+event: step
+data: {"kind": "tool_call", "tool": "search", "arguments": {"query": "Who is the engineering owner for the billing service at Redwood Inference?", "k": 10, "sources": ["slack", "confluence", "github", "linear"]}}
+
+event: step
+data: {"kind": "tool_result", "tool": "search", "count": 10, "error": null}
+
+: ping - 2026-11-27 04:44:35.297352+00:00
+
+event: step
+data: {"kind": "tool_call", "tool": "find_people", "arguments": {"query": "Revenue Engineering billing service owner", "k": 5}}
+
+event: step
+data: {"kind": "tool_result", "tool": "find_people", "count": 5, "error": null}
+
+event: step
+data: {"kind": "tool_call", "tool": "search", "arguments": {"query": "Who owns the billing service implementation and on-call responsibility, and what team is responsible?", "k": 10, "sources": ["slack", "github", "linear"]}}
+
+event: step
+data: {"kind": "tool_result", "tool": "search", "count": 10, "error": null}
+
+event: step
+data: {"kind": "tool_call", "tool": "search", "arguments": {"query": "billing-service ownership team primary owner named engineer", "k": 20, "sources": ["slack"]}}
+
+event: step
+data: {"kind": "tool_result", "tool": "search", "count": 20, "error": null}
+
+event: step
+data: {"kind": "tool_call", "tool": "lookup", "arguments": {"phrase": "billing-service", "sources": ["confluence", "github", "linear", "slack"], "k": 20}}
+
+: ping - 2026-11-27 04:44:50.303853+00:00
+
+event: step
+data: {"kind": "tool_result", "tool": "lookup", "count": 20, "error": null}
+
+event: step
+data: {"kind": "tool_call", "tool": "read_doc", "arguments": {"doc_id": "dsid_7f506cbd4497446a8d7927aca35bef8c"}}
+
+event: step
+data: {"kind": "tool_result", "tool": "read_doc", "count": null, "error": null}
+
+event: message
+data: {"text": "Ben owns the billing service\u2019s app-level work and is its service steward. [a3f1ed]"}
+
+event: answer
+data: {"text": "Ben owns the billing service\u2019s app-level work and is its service steward. [a3f1ed]", "citations": [{"ref": "a3f1ed", "doc_id": "dsid_7f506cbd4497446a8d7927aca35bef8c", "source": "slack", "title": "new-hires"}], "abstained": false, "unknown_refs": [], "conversation_id": "33d1a742d2ba4c8ea17aa9ac0a52c963"}
+
+event: done
+data: {"seconds": 49.9, "usage": {"input_tokens": 346088, "cached_input_tokens": 316928, "cache_write_input_tokens": 0, "output_tokens": 415, "reasoning_output_tokens": 0}}
+
