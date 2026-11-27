@@ -75,3 +75,32 @@ async def test_propose_from_the_memory_page():
         rows = (await c.get("/api/memories", params={"status": "pending"})).json()
     assert [(m["id"], m["text"], m["status"], m["proposed_by"]) for m in rows] == [
         (mid, "billing moved to payments", "pending", "maria")]
+
+
+@pytest.mark.anyio
+async def test_uploads_sync_into_the_outbox_and_show_in_sources(tmp_path):
+    from sqlalchemy import select
+
+    from orgbrain.db import ConnectorSource, Outbox
+
+    app, store = await web_app(tmp_path, uploads=tmp_path / "uploads")
+    files = [("files", ("a.md", b"# a\nalpha", "text/markdown")), ("files", ("b.md", b"beta", "text/markdown"))]
+    async with client(app) as c:
+        r = (await c.post("/api/sources/uploads", files=files)).json()
+        assert r == {"saved": ["a.md", "b.md"], "added": 2, "updated": 0, "deleted": 0, "skipped": []}
+        bad = await c.post("/api/sources/uploads", files=[("files", (".env", b"k", "text/plain"))])
+        assert bad.status_code == 422
+        overview = (await c.get("/api/sources")).json()
+        assert overview["corpus"] == {"confluence": 1, "files": 1} and overview["pending"] == 2
+        [up] = overview["connectors"]
+        assert (up["id"], up["kind"], up["files"], up["indexed"]) == ("uploads", "folder", 2, 0)
+        assert up["last_synced_at"]
+        again = (await c.post("/api/sources/uploads/sync")).json()
+        assert (again["added"], again["updated"]) == (0, 0)
+        assert (await c.post("/api/sources/nope/sync")).status_code == 404
+        async with store.sessions.begin() as s:
+            s.add(ConnectorSource(id="gone", kind="folder", config={"path": str(tmp_path / "gone")}))
+        assert (await c.post("/api/sources/gone/sync")).status_code == 409
+    async with store.sessions() as s:
+        rows = [(o.kind, o.doc_id) for o in (await s.execute(select(Outbox).order_by(Outbox.id))).scalars()]
+    assert rows == [("upsert", "file:uploads:a.md"), ("upsert", "file:uploads:b.md")]

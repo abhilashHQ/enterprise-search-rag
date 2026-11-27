@@ -8,6 +8,7 @@ from entsearch.data import ROOT
 ENV = {"qdrant_url": "ORGBRAIN_QDRANT_URL", "models_url": "ORGBRAIN_MODELS_URL", "database_url": "ORGBRAIN_DATABASE_URL",
        "fts_path": "ORGBRAIN_FTS_PATH", "docstore_path": "ORGBRAIN_DOCSTORE_PATH", "redis_url": "ORGBRAIN_REDIS_URL",
        "bm25_stats_path": "ORGBRAIN_BM25_STATS_PATH", "live_path": "ORGBRAIN_LIVE_PATH",
+       "uploads_path": "ORGBRAIN_UPLOADS_PATH",
        "api_url": "ORGBRAIN_API_URL", "slack_users": "ORGBRAIN_SLACK_USERS",
        "proactive_per_hour": "ORGBRAIN_PROACTIVE_PER_HOUR", "triage_model": "ORGBRAIN_TRIAGE_MODEL"}
 
@@ -22,6 +23,7 @@ class Settings:
     redis_url: str = "redis://127.0.0.1:6379/0"
     bm25_stats_path: Path = ROOT / "data/index/bm25.json"
     live_path: Path = ROOT / "data/orgbrain/live.sqlite"
+    uploads_path: Path = ROOT / "data/orgbrain/uploads"
     api_url: str = "http://127.0.0.1:8000"
     slack_users: str = "{}"
     proactive_per_hour: str = "20"

@@ -14,8 +14,9 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -24,12 +25,14 @@ from sse_starlette.sse import EventSourceResponse
 from entsearch.data import ROOT
 from orgbrain.answer import collect_hits, collect_people, finalize
 from orgbrain.config import Settings
-from orgbrain.db import ConversationStore
+from orgbrain.connectors.folder import sync_folder
+from orgbrain.db import ConnectorSource, ConversationStore
 from orgbrain.docs import DocReader
 from orgbrain.instructions import instructions
 from orgbrain.memory import MemoryStore
 from orgbrain.people import PeopleStore
 from orgbrain.runtime.events import Done, Message, ToolCall, ToolResult
+from orgbrain.uploads import save_uploads, sources_overview
 
 
 class AskRequest(BaseModel):
@@ -58,7 +61,7 @@ class ProposeRequest(BaseModel):
 
 
 def create_app(runtime, store: ConversationStore, memories=None, people=None, cache=None, embed=None,
-               docs: DocReader | None = None) -> FastAPI:
+               docs: DocReader | None = None, uploads: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app):
         if docs is not None:
@@ -85,6 +88,32 @@ def create_app(runtime, store: ConversationStore, memories=None, people=None, ca
     async def person(pid: str):
         p = await people.get(pid)
         return p if p else JSONResponse({"error": f"no person {pid}"}, status_code=404)
+
+    @app.get("/api/sources")
+    async def sources():
+        return await sources_overview(store.sessions, docs)
+
+    @app.post("/api/sources/uploads")
+    async def upload(files: list[UploadFile] = File(...)):
+        try:
+            saved = await asyncio.to_thread(save_uploads, uploads, [(f.filename or "", await f.read()) for f in files])
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=422)
+        async with store.sessions.begin() as s:
+            if await s.get(ConnectorSource, "uploads") is None:
+                s.add(ConnectorSource(id="uploads", kind="folder", config={"path": str(uploads.resolve())}))
+        return {"saved": saved, **asdict(await sync_folder(store.sessions, "uploads", uploads))}
+
+    @app.post("/api/sources/{source_id}/sync")
+    async def sync(source_id: str):
+        async with store.sessions() as s:
+            src = await s.get(ConnectorSource, source_id)
+        if src is None or src.kind != "folder":
+            return JSONResponse({"error": f"no folder source {source_id}"}, status_code=404)
+        path = (src.config or {}).get("path")
+        if not path or not Path(path).is_dir():
+            return JSONResponse({"error": f"{path} no longer exists"}, status_code=409)
+        return asdict(await sync_folder(store.sessions, source_id, Path(path)))
 
     @app.get("/api/memories")
     async def list_memories(status: str | None = None):
@@ -207,7 +236,8 @@ def main() -> None:
     uvicorn.run(create_app(runtime, store, memories=MemoryStore(store.sessions), people=PeopleStore(store.sessions),
                            cache=SemanticCache(Redis.from_url(settings.redis_url)),
                            embed=ModelsClient(settings.models_url).embed_query,
-                           docs=DocReader(settings.docstore_path, settings.live_path)), host=a.host, port=a.port)
+                           docs=DocReader(settings.docstore_path, settings.live_path),
+                           uploads=settings.uploads_path), host=a.host, port=a.port)
 
 
 if __name__ == "__main__":
