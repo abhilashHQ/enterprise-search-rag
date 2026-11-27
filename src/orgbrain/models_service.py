@@ -1,6 +1,6 @@
 """orgbrain model service: query embeddings and reranker scores on one GPU, over HTTP.
 
-  uv run --extra app orgbrain-models                 # http://127.0.0.1:8766, loads both models (about a minute)
+  uv run --extra app --extra models orgbrain-models                 # http://127.0.0.1:8766, loads both models (about a minute)
 """
 
 import argparse

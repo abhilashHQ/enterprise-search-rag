@@ -9,8 +9,8 @@ Qwen3-Reranker-0.6B, and measured seconds per question.
   cohere    Cohere Rerank 3.5 on Bedrock us-east-1 (about $0.002 per question)
   others    sentence-transformers CrossEncoder, fp16, max_length per MODELS
 
-  uv run python scripts/bakeoff_rerank.py run <name>
-  uv run python scripts/bakeoff_rerank.py report
+  uv run --extra models python scripts/bakeoff_rerank.py run <name>
+  uv run --extra models python scripts/bakeoff_rerank.py report
 """
 
 import json

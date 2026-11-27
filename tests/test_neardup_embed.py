@@ -1,3 +1,5 @@
+"""Needs torch: uv run --no-sync --extra app --extra models pytest tests/test_neardup_embed.py"""
+
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq

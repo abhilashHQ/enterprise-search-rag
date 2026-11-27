@@ -1,8 +1,7 @@
 """orgbrain search server: the search, lookup and read_doc tools over MCP streamable HTTP.
 
-  uv run --extra app orgbrain-search                       # http://127.0.0.1:8765/mcp
-  uv run --extra app orgbrain-search --dense binary        # dense index in 197 MB of RAM
-  uv run --extra app orgbrain-search --backend qdrant   # Qdrant + orgbrain-models; needs both running
+  uv run --extra app orgbrain-search                       # http://127.0.0.1:8765/mcp, Qdrant + orgbrain-models
+  uv run --extra app --extra models orgbrain-search --backend local --dense binary   # in-process indexes, 197 MB dense
 
 Long-running on purpose: indexes load once (about a minute) in a background thread, and every agent turn (Codex, the
 API-key runtime, any MCP client) reuses them. Calls are serialized: the GPU models are not thread-safe.

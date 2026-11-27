@@ -1,3 +1,5 @@
+"""Needs torch: uv run --no-sync --extra app --extra models pytest tests/test_rerank_attention.py"""
+
 from types import SimpleNamespace
 
 import torch

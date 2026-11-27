@@ -14,9 +14,9 @@ Reports recall@10 dense-only and hybrid (RRF k=60 of the pool dense top-100 with
 current. Bias: the pool holds the current model's own top-100, so its false positives are all present while a new
 model's full-corpus false positives may be missing. Treat as a screen; the winner gets a full-corpus check.
 
-  uv run python scripts/bakeoff_embed.py pool
-  uv run python scripts/bakeoff_embed.py embed <config>
-  uv run python scripts/bakeoff_embed.py report
+  uv run --extra models python scripts/bakeoff_embed.py pool
+  uv run --extra models python scripts/bakeoff_embed.py embed <config>
+  uv run --extra models python scripts/bakeoff_embed.py report
 """
 
 import json

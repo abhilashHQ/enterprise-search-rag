@@ -19,12 +19,9 @@ dependencies = [
     "pyyaml",
     "python-dotenv",
     "qdrant-client",
-    "torch>=2.11.0",
-    "sentence-transformers>=6.1.0",
     "opentelemetry-sdk>=1.45.0",
     "opentelemetry-exporter-otlp-proto-http>=1.45.0",
     "datasketch>=2.0.0",
-    "accelerate>=1.15.0",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +48,13 @@ app = [
     "slack_bolt>=1.21",
     "slack_sdk>=3.33",
     "aiohttp>=3.10",
+    "huggingface_hub>=0.30",
+    "zstandard>=0.23",
+]
+models = [
+    "torch>=2.11.0",
+    "sentence-transformers>=6.1.0",
+    "accelerate>=1.15.0",
 ]
 
 [project.scripts]
@@ -64,6 +68,7 @@ orgbrain-worker = "orgbrain.worker:main"
 orgbrain-connect = "orgbrain.connectors.folder:main"
 orgbrain-people = "orgbrain.people:main"
 orgbrain-slack = "orgbrain.slack.bot:main"
+orgbrain = "orgbrain.cli:main"
 
 [dependency-groups]
 dev = [
