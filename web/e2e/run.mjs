@@ -83,7 +83,7 @@ async function newPage(browser) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-  await page.goto(BASE);
+  await page.goto(`${BASE}/benchmark`);
   await page.locator("[data-question]").first().waitFor();
   return { page, errors, close: () => context.close() };
 }
@@ -439,7 +439,7 @@ async function checkRecordMode(browser, questions) {
   const c = new Check("record mode");
   const context = await browser.newContext({ viewport: VIEWPORT });
   const page = await context.newPage();
-  await page.goto(`${BASE}/?record=1`);
+  await page.goto(`${BASE}/benchmark?record=1`);
   await page.locator("[data-question]").first().waitFor();
   const visibleDev = await page.locator(".dev-only").evaluateAll((els) => els.filter((e) => e.offsetParent !== null).length);
   c.eq(visibleDev, 0, "dev-only UI hidden");
@@ -484,7 +484,7 @@ async function checkRecordMode(browser, questions) {
 async function checkBenchmark(browser) {
   const c = new Check("benchmark page");
   const { page, errors, close } = await newPage(browser);
-  await page.goto(`${BASE}/benchmark`);
+  await page.goto(`${BASE}/benchmark/results`);
   const readme = readFileSync(path.join(ROOT, "..", "README.md"), "utf8").split(/\r?\n/);
   const cells = (l) => l.trim().replace(/^\||\|$/g, "").split("|").map((x) => x.trim());
   const tables = await page.locator("[data-table]").evaluateAll((els) =>
@@ -514,7 +514,7 @@ async function checkA11y(browser, q) {
   const c = new Check("accessibility");
   for (const theme of ["light", "dark"]) {
     const { page, close } = await newPage(browser);
-    await page.goto(`${BASE}/?theme=${theme}`);
+    await page.goto(`${BASE}/benchmark?theme=${theme}`);
     await page.locator(`[data-question="${q.question_id}"]`).click();
     await expandSteps(page);
     await waitDone(page, runMs(q.question_id));
@@ -529,7 +529,7 @@ async function checkA11y(browser, q) {
       c.eq(v, [], `${theme} ${view}: no WCAG A/AA violations`);
     }
     if (SHOTS && theme === "dark") await page.screenshot({ path: path.join(SHOTS, "dark-retrieval.png") });
-    await page.goto(`${BASE}/benchmark?theme=${theme}`);
+    await page.goto(`${BASE}/benchmark/results?theme=${theme}`);
     const bench = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
     c.eq(bench.violations.map((x) => `${x.id} (${x.nodes.length}): ${x.nodes[0]?.target.join(" ")}`), [], `${theme} benchmark: no WCAG A/AA violations`);
     await close();

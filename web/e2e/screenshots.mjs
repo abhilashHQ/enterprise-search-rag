@@ -31,7 +31,7 @@ const shot = async (name) => {
   await page.screenshot({ path: path.join(OUT, `${name}.png`) });
 };
 
-await page.goto(`${BASE}/?record=1&theme=light`);
+await page.goto(`${BASE}/benchmark?record=1&theme=light`);
 await page.locator("[data-question]").first().waitFor();
 await page.keyboard.press(String(index + 1));
 await page.locator('[data-role="steps-toggle"]').click();
@@ -48,7 +48,7 @@ await page.keyboard.press("r");
 await page.waitForTimeout(2000);
 await shot("retrieval");
 
-await page.goto(`${BASE}/benchmark?record=1&theme=light`);
+await page.goto(`${BASE}/benchmark/results?record=1&theme=light`);
 await page.waitForLoadState("networkidle");
 await page.waitForTimeout(1000);
 await shot("benchmark");

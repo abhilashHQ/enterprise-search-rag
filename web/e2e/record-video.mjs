@@ -31,7 +31,7 @@ const browser = await chromium.launch(
 );
 const context = await browser.newContext({ viewport: SIZE, recordVideo: { dir: OUT, size: SIZE } });
 const page = await context.newPage();
-await page.goto(`${BASE}/?record=1&theme=${THEME}`);
+await page.goto(`${BASE}/benchmark?record=1&theme=${THEME}`);
 await page.locator("[data-question]").first().waitFor();
 await page.waitForTimeout(1500);
 

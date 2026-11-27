@@ -44,7 +44,7 @@ export function Sidebar({
       </div>
 
       <Link
-        href="/benchmark"
+        href="/benchmark/results"
         className="mt-4 flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium text-neutral-700 hover:bg-neutral-300/70"
       >
         <ChartNoAxesColumn className="size-4 shrink-0" aria-hidden />
