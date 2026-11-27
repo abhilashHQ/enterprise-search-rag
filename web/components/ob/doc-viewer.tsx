@@ -16,10 +16,12 @@ export function DocViewer({
   citation,
   trigger,
   onClose,
+  load = orgbrain.document,
 }: {
   citation: Citation | null
   trigger: HTMLElement | null
   onClose: () => void
+  load?: (docId: string) => Promise<Doc>
 }) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
@@ -28,8 +30,7 @@ export function DocViewer({
   useEffect(() => {
     if (!docId) return
     let live = true
-    orgbrain
-      .document(docId)
+    load(docId)
       .then((doc) => live && setLoaded({ docId, doc, error: null }))
       .catch((e) => {
         if (!live) return
@@ -39,7 +40,7 @@ export function DocViewer({
     return () => {
       live = false
     }
-  }, [docId])
+  }, [docId, load])
 
   useEffect(() => {
     if (!docId) return

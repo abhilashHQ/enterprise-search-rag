@@ -1,0 +1,7 @@
+/node_modules
+/.next/
+/out/
+/test-results
+/screenshots
+next-env.d.ts
+*.tsbuildinfo

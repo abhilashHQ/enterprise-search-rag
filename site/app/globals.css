@@ -1,0 +1,5 @@
+@import "../../web/app/globals.css";
+@import "../../web/app/(app)/orgbrain.css";
+
+@source "../../web/components";
+@source "../../web/lib";
