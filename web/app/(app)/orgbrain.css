@@ -8,7 +8,7 @@
     --ob-panel: #f6f6f4;
     --ob-accent: #2f9bff;
     /* The accent fails 4.5:1 as text on white, so text in the accent colour uses this darker step of it. */
-    --ob-accent-ink: #0a6fd6;
+    --ob-accent-ink: #0860bb;
     --ob-accent-soft: #e8f3ff;
     --ob-pending: #f5a524;
     --ob-ok: #17a34a;
