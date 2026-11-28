@@ -62,6 +62,8 @@ def parse_decision(text: str) -> Decision:
         return Decision("silent")
     if head.upper().startswith("REACT"):
         return Decision("react", emoji=head.split(maxsplit=1)[1].strip(": ") if " " in head else "eyes")
-    if head.upper() == "REPLY":
-        return Decision("reply", rest.strip())
+    word, _, inline = head.partition(" ")
+    if word.rstrip(":").upper() == "REPLY":
+        # The model sometimes starts the message on the REPLY line itself.
+        return Decision("reply", "\n".join(p for p in (inline.strip(), rest.strip()) if p))
     return Decision("reply", text.strip())

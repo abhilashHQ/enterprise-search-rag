@@ -40,3 +40,9 @@ def test_parse_decision():
     assert parse_decision("REACT :eyes:\n") == Decision("react", emoji="eyes")
     assert parse_decision("REPLY\nThe freeze starts Jan 12 [a1b2c3].") == Decision("reply", "The freeze starts Jan 12 [a1b2c3].")
     assert parse_decision("The freeze starts Jan 12.") == Decision("reply", "The freeze starts Jan 12.")
+
+
+def test_parse_decision_reply_on_the_same_line():
+    assert parse_decision("REPLY The freeze starts Jan 12.\nMore [1].") == Decision("reply", "The freeze starts Jan 12.\nMore [1].")
+    assert parse_decision("REPLY: The freeze starts Jan 12.") == Decision("reply", "The freeze starts Jan 12.")
+    assert parse_decision("Replying soon.") == Decision("reply", "Replying soon.")
