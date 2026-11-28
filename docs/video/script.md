@@ -29,4 +29,4 @@ email, tickets and docs, and ask it things. Every answer cites where it came fro
 and it joins Slack. The demo runs on Redwood Inference, a fake company from the EnterpriseRAG-Bench benchmark, with
 511,962 documents. It runs on Codex with a ChatGPT plan or any OpenAI-compatible API. On the benchmark's dev questions
 it scores 81.8 against 91.5 for the best leaderboard entry, judged the same way, so there's still work to do. Code,
-quickstart and numbers: https://github.com/abhilashHQ/enterprise-search-rag
+quickstart and numbers: https://github.com/abhilashHQ/OrgBrain

@@ -13,7 +13,7 @@
 ## run it
 
 ```
-git clone https://github.com/abhilashHQ/enterprise-search-rag.git orgbrain && cd orgbrain
+git clone https://github.com/abhilashHQ/OrgBrain.git orgbrain && cd orgbrain
 cp .env.example .env
 docker compose up -d
 docker compose run --rm api codex login --device-auth

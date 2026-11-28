@@ -9,7 +9,7 @@ import { sourceName } from "@web/lib/sources"
 import { CopyBlock } from "~/components/copy-block"
 import { Replay } from "~/components/replay"
 
-const REPO = "https://github.com/abhilashHQ/enterprise-search-rag"
+const REPO = "https://github.com/abhilashHQ/OrgBrain"
 const QUESTION = "what did we decide about the canary rollout?"
 const QUICKSTART = `git clone ${REPO}.git orgbrain && cd orgbrain
 cp .env.example .env

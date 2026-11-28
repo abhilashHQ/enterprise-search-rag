@@ -43,7 +43,7 @@ A prebuilt search index of Redwood Inference, the fictional company in
 [EnterpriseRAG-Bench](https://github.com/onyx-dot-app/EnterpriseRAG-Bench) (MIT license): {docs:,} documents across nine
 apps (Slack, Gmail, Linear, Google Drive, HubSpot, Fireflies, GitHub, Jira, Confluence), split into {chunks:,} chunks.
 
-[orgbrain](https://github.com/abhilashHQ/enterprise-search-rag) restores it with one command so the company brain
+[orgbrain](https://github.com/abhilashHQ/OrgBrain) restores it with one command so the company brain
 works before you connect your own data:
 
 ```
