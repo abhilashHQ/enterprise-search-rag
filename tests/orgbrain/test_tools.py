@@ -26,10 +26,18 @@ class FakeBackend:
 def test_search_tool_passes_filter_and_shapes_results():
     b = FakeBackend()
     out = search_tool(b, "rollback", sources=["jira"], k=2)
-    assert b.calls == [("rollback", ["jira"], 2, 0)]
-    assert out["sources"] == ["jira"] and len(out["results"]) == 2
+    assert b.calls == [("rollback", ["jira", "memory"], 2, 0)]
+    assert out["sources"] == ["jira", "memory"] and len(out["results"]) == 2
     assert out["results"][0] == {"ref": ref("d0"), "doc_id": "d0", "source": "jira", "title": "T0", "snippet": "snip", "score": 0.9}
     assert "[ref]" in out["hint"]
+
+
+def test_a_source_filter_keeps_approved_memories():
+    b = FakeBackend()
+    search_tool(b, "q", sources=["slack", "confluence"], k=1)
+    search_tool(b, "q", sources=["memory"], k=1)
+    lookup_tool(b, "q", sources=["slack"], k=1)
+    assert [c[1] for c in b.calls] == [["slack", "confluence", "memory"], ["memory"], ["slack", "memory"]]
 
 
 def test_search_tool_empty_filter_means_all_sources():
@@ -63,7 +71,7 @@ def test_search_tool_rejects_offset_past_depth(offset):
 def test_lookup_tool_passes_phrase_and_filter():
     b = FakeBackend()
     out = lookup_tool(b, "TKT-4471", sources=["linear"], k=3)
-    assert b.calls == [("TKT-4471", ["linear"], 3)]
+    assert b.calls == [("TKT-4471", ["linear", "memory"], 3)]
     assert out["phrase"] == "TKT-4471" and out["results"][0]["doc_id"] == "d9"
 
 

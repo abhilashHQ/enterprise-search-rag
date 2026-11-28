@@ -19,7 +19,10 @@ def _check(k: int, sources: list[str] | None) -> list[str] | None:
     bad = [s for s in sources or [] if s not in valid]
     if bad:
         raise ValueError(f"unknown source {bad}; valid sources: {sorted(valid)}")
-    return list(sources) if sources else None
+    if not sources:
+        return None
+    # A filter narrows the apps; approved memories apply across all of them, so they always stay in.
+    return list(sources) + ([Source.MEMORY.value] if Source.MEMORY.value not in sources else [])
 
 
 def search_tool(backend: SearchBackend, query: str, sources: list[str] | None = None, k: int = 10,
@@ -58,7 +61,8 @@ TOOL_SPECS = [
     {"type": "function", "function": {
         "name": "search",
         "description": "Search the company's documents. Returns the top k results with ref, doc_id, source, title and "
-                       "snippet. Filter by sources only when the question clearly points at one kind of system. "
+                       "snippet. Filter by sources only when the question clearly points at one kind of system; "
+                       "approved memories are always included. "
                        f"Sources: {_SOURCES_DOC}.",
         "parameters": {"type": "object", "properties": {
             "query": {"type": "string", "description": "What to look for, in plain words."},

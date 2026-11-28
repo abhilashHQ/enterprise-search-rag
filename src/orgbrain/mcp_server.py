@@ -54,8 +54,8 @@ def build_server(load: "Future[SearchBackend]", app=None) -> MCPServer:
     def search(query: str, sources: list[Source] | None = None, k: int = 10, offset: int = 0) -> dict[str, Any]:
         """Search the company's documents by meaning and keywords. Returns k (1 to 20) results with ref, doc_id,
         source, title and snippet, starting at offset (page deeper with offset=10, 20, ... up to 100). Pass sources
-        only when the question clearly points at one kind of system; if filtered results look unrelated, search again
-        without the filter. Cite results as [ref]."""
+        only when the question clearly points at one kind of system; approved memories are always included. If
+        filtered results look unrelated, search again without the filter. Cite results as [ref]."""
         with lock:
             try:
                 return search_tool(backend(), query, [s.value for s in sources] if sources else None, k, offset)
