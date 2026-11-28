@@ -6,8 +6,8 @@
 - About 6 GB of RAM for Docker. Measured on the full stack: 5.1 GB idle, 5.2 GB at peak while answering.
 - About 40 GB of free disk: 15 GB of images, 16 GB of volumes once the demo is loaded, and 9 GB more while
   `orgbrain demo` downloads (it deletes the download afterwards).
-- An NVIDIA GPU with 3 GB of free VRAM is the default. The embedder and reranker take 2.4 GB on the GPU. Without
-  one, use the CPU override below.
+- An NVIDIA GPU with 3 GB of free VRAM. The embedder and reranker take 2.4 GB on the GPU. v1 doesn't run without one
+  (see [why there's no cpu mode](#why-theres-no-cpu-mode)).
 - A ChatGPT plan with Codex, or an OpenAI-compatible API key (see [models.md](models.md)).
 
 ## run it
@@ -34,17 +34,18 @@ What each step does:
    loads it: two Qdrant collections, the document store, the phrase index and 883 people. Loading took about 10 minutes
    here. The search service waits for the index and starts answering on its own once it's in.
 
-## gpu or cpu
-
-The default `docker-compose.yml` gives the models container the GPU. Without an NVIDIA GPU:
-
-```
-docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
-```
+## how fast it is
 
 Measured on a laptop RTX 3050 (6 GB) with Codex `gpt-6-luna` at low effort: a first question takes about 55 to 75 s
 end to end, and a follow-up about 25 s. A single search call (hybrid retrieval plus reranking the top 20) has a median
 of 6.6 s on the GPU. Most of a turn is Codex deciding what to search next.
+
+## why there's no cpu mode
+
+The reranker is too slow on a CPU. Reranking one search's 20 candidates on a laptop i5-13450HX took 95 to 103 s in
+fp32 (6.0 GB of RAM at peak) and 313 to 329 s in bf16 (4.1 GB; the same ranking, but that CPU has no native bf16). A
+question runs about three searches, so answers would take 5 to 15 minutes. The models service still takes
+`--device cpu` for experiments.
 
 ## check it
 

@@ -26,10 +26,10 @@ Then open http://localhost:3000 and sign in as anyone at Redwood Inference, the 
 Codex to your ChatGPT plan; skip it if you use an API key instead.
 
 You need Docker with about 6 GB of RAM (the whole stack measured 5.1 GB idle, 5.2 GB answering), about 40 GB of free
-disk, and an NVIDIA GPU with 3 GB of free VRAM or the CPU override. The demo index is a 9.1 GB download.
+disk, and an NVIDIA GPU with 3 GB of free VRAM. The demo index is a 9.1 GB download.
 
-[docs/quickstart.md](docs/quickstart.md) has the details: GPU or CPU, checking the stack with `orgbrain status`, and
-what to do when something doesn't come up.
+[docs/quickstart.md](docs/quickstart.md) has the details: what each step does, how fast it is,
+checking the stack with `orgbrain status`, and what to do when something doesn't come up.
 
 ## What it does
 

@@ -25,7 +25,7 @@ write path     connector, upload or approved memory -> postgres row + outbox row
 | `api` | `orgbrain-api`. One endpoint per page of the web app, plus `POST /api/ask`, which streams each agent step as server-sent events. It runs one question at a time. |
 | agent runtime | Codex CLI by default: one `codex exec --json` per turn with the orgbrain MCP server attached, resumed with `codex exec resume` on follow-ups. The alternative is a small tool loop over any OpenAI-compatible chat API. The Settings page switches between them. |
 | `search` | `orgbrain-search`, an MCP server over streamable HTTP. `search` runs a hybrid query in Qdrant (dense chunks grouped by document, BM25 over documents, fused), reranks the top 20 and returns the top k with snippets. `lookup` finds an exact phrase in the FTS5 index. `read_doc` returns a document in pages. |
-| `models` | `orgbrain-models`: Qwen3-Embedding-0.6B for query vectors and Qwen3-Reranker-0.6B for scores, on the GPU or CPU, over HTTP. The only image with torch. |
+| `models` | `orgbrain-models`: Qwen3-Embedding-0.6B for query vectors and Qwen3-Reranker-0.6B for scores, on the GPU, over HTTP. The only image with torch. |
 | `worker` | `orgbrain-worker`: relays outbox rows to a Redis stream and indexes each event. |
 | `qdrant` | `documents` (one point per document, BM25 sparse vector, full text in an on-disk payload) and `chunks` (512-token chunks, 1024-d float16 dense vectors on disk, binary quantization in RAM). |
 | `postgres` | App state only: conversations, memories, people, sources, settings, the outbox. The agent never reads knowledge from it. |
