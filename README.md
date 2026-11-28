@@ -3,6 +3,15 @@
 An open-source company brain you run yourself: it reads your team's chat, email, tickets and docs, answers with
 citations, remembers what the team approves, and joins Slack.
 
+![asking orgbrain about a canary rollout: it searches, answers with a citation, and opens the slack thread it came from](docs/media/chat.gif)
+
+<p>
+  <img src="docs/media/memory.png" width="49%" alt="the memory page with a proposed note waiting for an admin">
+  <img src="docs/media/sources.png" width="49%" alt="the sources page with document counts for each app">
+</p>
+
+The GIF is sped up; a real answer takes about a minute on a laptop GPU.
+
 ## Quickstart
 
 ```
